@@ -185,22 +185,39 @@ export function radix2FFT(re: Float32Array, im: Float32Array): void {
   }
 }
 
+
+
+export const POLYPHASE_4X_TAPS = [
+  // Phase 0: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0] (exact sample)
+  new Float32Array([0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 0, 0]),
+  // Phase 1 (+0.25)
+  new Float32Array([-0.0117, 0.0163, -0.0267, 0.0468, -0.0989, 0.8901, 0.2312, -0.0718, 0.0385, -0.0229, 0.0142, -0.0094]),
+  // Phase 2 (+0.50)
+  new Float32Array([-0.0143, 0.0204, -0.0345, 0.0652, -0.1601, 0.6233, 0.6233, -0.1601, 0.0652, -0.0345, 0.0204, -0.0143]),
+  // Phase 3 (+0.75)
+  new Float32Array([-0.0094, 0.0142, -0.0229, 0.0385, -0.0718, 0.2312, 0.8901, -0.0989, 0.0468, -0.0267, 0.0163, -0.0117])
+];
+
 /**
- * 4x Oversampled True Peak Hermite Cubic Interpolator
+ * Calculates max True Peak over a 12-sample history using 4x Polyphase Oversampling
+ * @param hist Circular buffer of 12 samples (idx 0 is newest, idx 11 is oldest)
  */
-export function evalHermite4xPeak(s0: number, s1: number, s2: number, s3: number): number {
-  let maxAbs = Math.max(Math.abs(s1), Math.abs(s2));
-  const c0 = s1;
-  const c1 = 0.5 * (s2 - s0);
-  const c2 = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
-  const c3 = 0.5 * (s3 - s0) + 1.5 * (s1 - s2);
-  for (let step = 1; step <= 3; step++) {
-    const t = step * 0.25;
-    const val = Math.abs(((c3 * t + c2) * t + c1) * t + c0);
-    if (val > maxAbs) maxAbs = val;
+export function evalTruePeakPolyphase4x(hist: Float32Array): number {
+  // The processing pipeline stores newest samples at index 0, while FIR taps
+  // are defined in chronological (oldest-to-newest) order. Reverse the history
+  // when applying the taps; otherwise asymmetric phases are time-reversed.
+  if (hist.length !== 12) throw new RangeError('True-peak history must contain 12 samples');
+  let maxAbs = 0;
+  for (let p = 0; p < 4; p++) {
+    const phaseTaps = POLYPHASE_4X_TAPS[p];
+    let val = 0;
+    for (let i = 0; i < 12; i++) val += hist[11 - i] * phaseTaps[i];
+    maxAbs = Math.max(maxAbs, Math.abs(val));
   }
   return maxAbs;
 }
+
+
 
 /**
  * Pure calculation of resonance frequencies from a spectrum
@@ -235,6 +252,7 @@ export function detectResonances(spectrumDb: Float32Array, binHz: number): Reson
     }
   }
 
+
   candidates.sort((a, b) => b.prominenceDb - a.prominenceDb);
   const resonances: ResonanceCandidate[] = [];
   for (const cand of candidates) {
@@ -244,14 +262,10 @@ export function detectResonances(spectrumDb: Float32Array, binHz: number): Reson
     }
   }
 
-  const defaultResFreqs = [345, 2950, 4650];
-  while (resonances.length < 3) {
-    const f = defaultResFreqs[resonances.length];
-    resonances.push({ bin: Math.round(f / binHz), freq: f, prominenceDb: 2.0, cutDb: -1.8, q: 9.0 });
-  }
-
+  // Remove default resonance fake frequencies
   return resonances;
 }
+
 
 /**
  * Compute Suno Mastering Chain Prescription
@@ -320,24 +334,43 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
 export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetrics> {
   const sr = buffer.sampleRate;
   const len = buffer.length;
+  if (!Number.isFinite(sr) || sr <= 0 || len <= 0 || buffer.numberOfChannels < 1) {
+    throw new RangeError('AudioBuffer must have a positive sample rate, at least one channel, and non-empty audio');
+  }
+  if (buffer.numberOfChannels > 2) {
+    throw new RangeError('MAIK MT analysis currently supports mono or stereo audio only');
+  }
   const chL = buffer.getChannelData(0);
   const chR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chL;
 
   let maxTruePeak = 0;
-  let sumSq = 0, sumLR = 0, sumL2 = 0, sumR2 = 0;
+  let sumSqChannels = 0, sumLR = 0, sumL2 = 0, sumR2 = 0;
+
+  const histL = new Float32Array(12);
+  const histR = new Float32Array(12);
 
   for (let i = 0; i < len; i++) {
     const l = chL[i];
     const r = chR[i];
-    const m = 0.5 * (l + r);
-    sumSq += m * m;
+    // RMS is the mean power across actual channels, not the mid signal (which
+    // can cancel out-of-phase material and under-report level).
+    sumSqChannels += l * l;
+    if (chR !== chL) sumSqChannels += r * r;
     sumLR += l * r;
     sumL2 += l * l;
     sumR2 += r * r;
 
-    if (i >= 1 && i < len - 2) {
-      const tpL = evalHermite4xPeak(chL[i - 1], l, chL[i + 1], chL[i + 2]);
-      const tpR = evalHermite4xPeak(chR[i - 1], r, chR[i + 1], chR[i + 2]);
+    // shift history
+    for (let h = 11; h > 0; h--) {
+       histL[h] = histL[h - 1];
+       if (chR !== chL) histR[h] = histR[h - 1];
+    }
+    histL[0] = l;
+    if (chR !== chL) histR[0] = r;
+
+    if (i >= 11) {
+      const tpL = evalTruePeakPolyphase4x(histL);
+      const tpR = chR !== chL ? evalTruePeakPolyphase4x(histR) : tpL;
       if (tpL > maxTruePeak) maxTruePeak = tpL;
       if (tpR > maxTruePeak) maxTruePeak = tpR;
     } else {
@@ -347,69 +380,126 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
   }
 
   const truePeakDb = 20 * Math.log10(Math.max(maxTruePeak, 1e-9));
-  const rmsDb = 10 * Math.log10(Math.max(sumSq / len, 1e-12));
+  const channelCountForRms = buffer.numberOfChannels > 1 ? buffer.numberOfChannels : 1;
+  const rmsDb = 10 * Math.log10(Math.max(sumSqChannels / (len * channelCountForRms), 1e-12));
   const crestDb = truePeakDb - rmsDb;
   const phaseCorr = (sumL2 > 0 && sumR2 > 0) ? (sumLR / Math.sqrt(sumL2 * sumR2)) : 1.0;
 
-  // BS.1770 K-weighting pre-filter simulation
+
+  // BS.1770-4 K-weighting native DSP simulation
   let integratedLufs = -18.0;
-  try {
-    const kCtx = new OfflineAudioContext(buffer.numberOfChannels, len, sr);
-    const src = kCtx.createBufferSource();
-    src.buffer = buffer;
+  // Stage 1: High-shelf filter (pre-filter)
+  // Coefficients for 48kHz (approximate for any Fs but ideally calculated from analog proto)
+  // Let's use direct biquad equations to calculate exact coeffs for the sample rate.
+  // Stage 1: High shelf, f0 = 1681.9744509555319 Hz, Q = 0.7071752369554193, Gain = 4.0 dB
+  const K = Math.tan(Math.PI * 1681.9744509555319 / sr);
+  const Vh = Math.pow(10, 4.0 / 20.0);
+  const Vb = Math.pow(Vh, 0.499666774155);
+  const a0_1 = 1 + K / 0.7071752369554193 + K * K;
+  const b0_1 = (Vh + Vb * K / 0.7071752369554193 + K * K) / a0_1;
+  const b1_1 = 2 * (K * K - Vh) / a0_1;
+  const b2_1 = (Vh - Vb * K / 0.7071752369554193 + K * K) / a0_1;
+  const a1_1 = 2 * (K * K - 1) / a0_1;
+  const a2_1 = (1 - K / 0.7071752369554193 + K * K) / a0_1;
 
-    const preShelf = kCtx.createBiquadFilter();
-    preShelf.type = "highshelf";
-    preShelf.frequency.value = 1681;
-    preShelf.gain.value = 4.0;
+  // Stage 2: High-pass filter, f0 = 38.13547087613982 Hz, Q = 0.5003270373253953
+  const K2 = Math.tan(Math.PI * 38.13547087613982 / sr);
+  const a0_2 = 1 + K2 / 0.5003270373253953 + K2 * K2;
+  const b0_2 = 1 / a0_2;
+  const b1_2 = -2 / a0_2;
+  const b2_2 = 1 / a0_2;
+  const a1_2 = 2 * (K2 * K2 - 1) / a0_2;
+  const a2_2 = (1 - K2 / 0.5003270373253953 + K2 * K2) / a0_2;
 
-    const rlbHp = kCtx.createBiquadFilter();
-    rlbHp.type = "highpass";
-    rlbHp.frequency.value = 38;
-    rlbHp.Q.value = 0.5;
+  // Calculate blocked energies
+  // BS.1770 uses 400 ms blocks. For shorter clips use the full available
+  // duration so the analyser returns a finite short-clip estimate instead of
+  // a fake -120 LUFS value. Such estimates are not strictly comparable to a
+  // standards-compliant 400 ms integrated measurement.
+  const blockSamples = Math.max(1, Math.min(len, Math.floor(sr * 0.4)));
+  const stepSamples = Math.max(1, Math.min(blockSamples, Math.floor(sr * 0.1)));
+  const blockEnergies: { meanSq: number; lufsBlock: number }[] = [];
 
-    src.connect(preShelf);
-    preShelf.connect(rlbHp);
-    rlbHp.connect(kCtx.destination);
-    src.start(0);
+  let z1_1L = 0, z2_1L = 0, z1_2L = 0, z2_2L = 0;
+  let z1_1R = 0, z2_1R = 0, z1_2R = 0, z2_2R = 0;
 
-    const kBuffer = await kCtx.startRendering();
-    const kL = kBuffer.getChannelData(0);
-    const kR = kBuffer.numberOfChannels > 1 ? kBuffer.getChannelData(1) : kL;
+  // Pre-process K-weighting
+  const kL = new Float32Array(len);
+  const kR = new Float32Array(len);
 
-    const blockSamples = Math.floor(sr * 0.4);
-    const stepSamples = Math.floor(sr * 0.1);
-    const blockEnergies: { meanSq: number; lufsBlock: number }[] = [];
+  for (let i = 0; i < len; i++) {
+    const l = chL[i];
+    const r = chR !== chL ? chR[i] : l;
 
-    for (let start = 0; start + blockSamples <= len; start += stepSamples) {
-      let bSum = 0;
-      for (let i = start; i < start + blockSamples; i++) {
-        bSum += 0.5 * (kL[i] * kL[i] + kR[i] * kR[i]);
-      }
-      const meanSq = bSum / blockSamples;
-      const lufsBlock = -0.691 + 10 * Math.log10(Math.max(meanSq, 1e-12));
-      if (lufsBlock > -70) blockEnergies.push({ meanSq, lufsBlock });
+    // Stage 1 L
+    let out1L = b0_1 * l + z1_1L;
+    z1_1L = b1_1 * l - a1_1 * out1L + z2_1L;
+    z2_1L = b2_1 * l - a2_1 * out1L;
+    // Stage 2 L
+    let out2L = b0_2 * out1L + z1_2L;
+    z1_2L = b1_2 * out1L - a1_2 * out2L + z2_2L;
+    z2_2L = b2_2 * out1L - a2_2 * out2L;
+    kL[i] = out2L;
+
+    if (chR !== chL) {
+      // Stage 1 R
+      let out1R = b0_1 * r + z1_1R;
+      z1_1R = b1_1 * r - a1_1 * out1R + z2_1R;
+      z2_1R = b2_1 * r - a2_1 * out1R;
+      // Stage 2 R
+      let out2R = b0_2 * out1R + z1_2R;
+      z1_2R = b1_2 * out1R - a1_2 * out2R + z2_2R;
+      z2_2R = b2_2 * out1R - a2_2 * out2R;
+      kR[i] = out2R;
+    } else {
+      kR[i] = out2L;
     }
-
-    let gatedMeanSq = 1e-9;
-    if (blockEnergies.length > 0) {
-      const absMean = blockEnergies.reduce((a, b) => a + b.meanSq, 0) / blockEnergies.length;
-      const relGate = -0.691 + 10 * Math.log10(Math.max(absMean, 1e-12)) - 10;
-      const relBlocks = blockEnergies.filter(b => b.lufsBlock >= relGate);
-      if (relBlocks.length > 0) {
-        gatedMeanSq = relBlocks.reduce((a, b) => a + b.meanSq, 0) / relBlocks.length;
-      }
-    }
-    integratedLufs = -0.691 + 10 * Math.log10(Math.max(gatedMeanSq, 1e-12));
-  } catch {
-    integratedLufs = rmsDb - 0.691;
   }
+
+  for (let start = 0; start + blockSamples <= len; start += stepSamples) {
+    let bSumL = 0;
+    let bSumR = 0;
+    for (let i = start; i < start + blockSamples; i++) {
+      bSumL += kL[i] * kL[i];
+      bSumR += kR[i] * kR[i];
+    }
+    const meanSqL = bSumL / blockSamples;
+    const meanSqR = bSumR / blockSamples;
+    // BS.1770 channel weighting is 1.0 per active channel. A mono file has
+    // one channel; do not duplicate its energy and add an artificial +3.01 dB.
+    const meanSq = buffer.numberOfChannels > 1 ? (meanSqL + meanSqR) : meanSqL;
+
+    if (meanSq > 0) {
+       const lufsBlock = -0.691 + 10 * Math.log10(meanSq);
+       if (lufsBlock >= -70) {
+         blockEnergies.push({ meanSq, lufsBlock });
+       }
+    }
+  }
+
+  let integratedLufsResult = -120.0; // Default when empty
+  if (blockEnergies.length > 0) {
+    const absMean = blockEnergies.reduce((a, b) => a + b.meanSq, 0) / blockEnergies.length;
+    const relGate = -0.691 + 10 * Math.log10(Math.max(absMean, 1e-12)) - 10;
+    const relBlocks = blockEnergies.filter(b => b.lufsBlock >= relGate);
+    if (relBlocks.length > 0) {
+      const gatedMeanSq = relBlocks.reduce((a, b) => a + b.meanSq, 0) / relBlocks.length;
+      integratedLufsResult = -0.691 + 10 * Math.log10(Math.max(gatedMeanSq, 1e-12));
+    }
+  }
+  integratedLufs = integratedLufsResult;
+
+
 
   // 4096-Point FFT Power Spectrum
   const halfBins = FFT_SIZE >> 1;
   const avgPower = new Float64Array(halfBins);
-  const numWindows = Math.min(75, Math.max(1, Math.floor((len - FFT_SIZE) / FFT_SIZE)));
-  const hop = Math.max(FFT_SIZE, Math.floor((len - FFT_SIZE) / numWindows));
+
+  // Apply zero padding if length is less than FFT_SIZE
+  const paddedLen = Math.max(len, FFT_SIZE);
+  const numWindows = Math.max(1, Math.floor((paddedLen - FFT_SIZE) / FFT_SIZE) + 1);
+  const hop = Math.max(FFT_SIZE, Math.floor((paddedLen - FFT_SIZE) / numWindows));
+
   const re = new Float32Array(FFT_SIZE);
   const im = new Float32Array(FFT_SIZE);
   let activeFrames = 0;
@@ -418,19 +508,35 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
     const offset = w * hop;
     let frameEnergy = 0;
     for (let i = 0; i < FFT_SIZE; i++) {
-      const m = 0.5 * (chL[offset + i] + chR[offset + i]);
-      frameEnergy += m * m;
-      re[i] = m * BH_WINDOW[i];
+      const pIdx = offset + i;
+      const sampleL = pIdx < len ? chL[pIdx] : 0;
+      const sampleR = pIdx < len ? chR[pIdx] : 0;
+      frameEnergy += sampleL * sampleL;
+      if (chR !== chL) frameEnergy += sampleR * sampleR;
+      re[i] = sampleL * BH_WINDOW[i];
       im[i] = 0.0;
     }
-    if (10 * Math.log10(Math.max(frameEnergy / FFT_SIZE, 1e-12)) > -55) {
+    const channelCount = chR !== chL ? 2 : 1;
+    if (10 * Math.log10(Math.max(frameEnergy / (FFT_SIZE * channelCount), 1e-12)) > -80) {
       radix2FFT(re, im);
       for (let b = 0; b < halfBins; b++) {
-        avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE);
+        avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE * channelCount);
+      }
+      if (chR !== chL) {
+        for (let i = 0; i < FFT_SIZE; i++) {
+          const pIdx = offset + i;
+          re[i] = (pIdx < len ? chR[pIdx] : 0) * BH_WINDOW[i];
+          im[i] = 0.0;
+        }
+        radix2FFT(re, im);
+        for (let b = 0; b < halfBins; b++) {
+          avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE * channelCount);
+        }
       }
       activeFrames++;
     }
   }
+
 
   const spectrumDb = new Float32Array(halfBins);
   const normFrames = Math.max(1, activeFrames);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   radix2FFT,
-  evalHermite4xPeak,
+  evalTruePeakPolyphase4x,
   detectResonances,
   computeSunoPrescription,
   analyzeAudioBuffer,
@@ -31,15 +31,10 @@ test('radix2FFT computes spectrum for pure sine', () => {
   assert.ok(mag4 > mag2 * 10, 'Target bin magnitude significantly higher than off-bins');
 });
 
-test('evalHermite4xPeak detects inter-sample peaks exceeding sample grid', () => {
-  // Peak between s1 and s2 where analog waveform overshoots
-  const s0 = 0.5;
-  const s1 = 0.95;
-  const s2 = 0.95;
-  const s3 = 0.5;
-  const isp = evalHermite4xPeak(s0, s1, s2, s3);
-  assert.ok(isp >= 0.95, 'Interpolated peak must be at least as large as sampled points');
-  assert.ok(isp > 0.95, 'True peak must detect inter-sample overshoots');
+test('evalTruePeakPolyphase4x detects inter-sample peaks exceeding sample grid', () => {
+  const hist = new Float32Array([0, 0, 0, 0, 0, 1.0, 1.0, 0, 0, 0, 0, 0]);
+  const isp = evalTruePeakPolyphase4x(hist);
+  assert.ok(isp > 1.0, 'Interpolated peak must be larger than 1.0 for two consecutive 1.0 samples');
 });
 
 test('detectResonances identifies prominent spectral spikes', () => {
@@ -113,6 +108,41 @@ class MockAudioBuffer {
     return this._data[channel];
   }
 }
+
+// Regression: a mono file is one weighted channel in BS.1770, not an implicit
+// dual-mono stereo file (which would be 3.01 dB louder).
+test('LUFS: mono energy is not double-counted', async () => {
+  const mono = new MockAudioBuffer(1, 44100, 44100) as any as AudioBuffer;
+  const stereo = new MockAudioBuffer(2, 44100, 44100) as any as AudioBuffer;
+  for (let i = 0; i < mono.length; i++) {
+    const sample = 0.2 * Math.sin(2 * Math.PI * 1000 * i / mono.sampleRate);
+    mono.getChannelData(0)[i] = sample;
+    stereo.getChannelData(0)[i] = sample;
+    stereo.getChannelData(1)[i] = sample;
+  }
+  const monoMetrics = await analyzeAudioBuffer(mono);
+  const stereoMetrics = await analyzeAudioBuffer(stereo);
+  assert.ok(Math.abs((stereoMetrics.integratedLufs - monoMetrics.integratedLufs) - 3.0103) < 0.15,
+    `Expected stereo dual-mono to be about 3.01 LU above mono; got ${stereoMetrics.integratedLufs - monoMetrics.integratedLufs}`);
+});
+
+test('RMS: anti-phase stereo must not disappear in the mid signal', async () => {
+  const buf = new MockAudioBuffer(2, 44100, 44100) as any as AudioBuffer;
+  for (let i = 0; i < buf.length; i++) {
+    const sample = 0.25 * Math.sin(2 * Math.PI * 1000 * i / buf.sampleRate);
+    buf.getChannelData(0)[i] = sample;
+    buf.getChannelData(1)[i] = -sample;
+  }
+  const metrics = await analyzeAudioBuffer(buf);
+  assert.ok(metrics.rmsDb > -16 && metrics.rmsDb < -14, `Unexpected anti-phase RMS: ${metrics.rmsDb} dBFS`);
+  assert.ok(metrics.phaseCorr < -0.99);
+  assert.ok(metrics.bandDb.mid > -20, 'Anti-phase content should remain visible in the power spectrum');
+});
+
+test('an empty audio buffer is rejected with a clear error', async () => {
+  const buf = new MockAudioBuffer(1, 0, 44100) as any as AudioBuffer;
+  await assert.rejects(() => analyzeAudioBuffer(buf), /non-empty audio/);
+});
 
 // 1. Digital silence
 test('Scenario 1: Digital Silence', async () => {
@@ -261,6 +291,11 @@ test('Scenario 13: Crest factor variance', async () => {
 test('Scenario 14: Export correctly to WAV', async () => {
   const buf = new MockAudioBuffer(2, 44100, 44100) as any as AudioBuffer;
   const blob = bufferToWav24BitTPDF(buf, false);
-  assert.ok(blob.size > 0);
   assert.equal(blob.type, "audio/wav");
+  assert.equal(blob.size, 44 + buf.length * buf.numberOfChannels * 3);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), 'RIFF');
+  assert.equal(new TextDecoder().decode(bytes.slice(8, 12)), 'WAVE');
+  assert.equal(new TextDecoder().decode(bytes.slice(36, 40)), 'data');
+  assert.equal(new DataView(bytes.buffer).getUint16(34, true), 24);
 });
