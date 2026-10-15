@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   radix2FFT,
-  evalHermite4xPeak,
+  evalTruePeakPolyphase4x,
   detectResonances,
   computeSunoPrescription,
   analyzeAudioBuffer,
@@ -31,15 +31,10 @@ test('radix2FFT computes spectrum for pure sine', () => {
   assert.ok(mag4 > mag2 * 10, 'Target bin magnitude significantly higher than off-bins');
 });
 
-test('evalHermite4xPeak detects inter-sample peaks exceeding sample grid', () => {
-  // Peak between s1 and s2 where analog waveform overshoots
-  const s0 = 0.5;
-  const s1 = 0.95;
-  const s2 = 0.95;
-  const s3 = 0.5;
-  const isp = evalHermite4xPeak(s0, s1, s2, s3);
-  assert.ok(isp >= 0.95, 'Interpolated peak must be at least as large as sampled points');
-  assert.ok(isp > 0.95, 'True peak must detect inter-sample overshoots');
+test('evalTruePeakPolyphase4x detects inter-sample peaks exceeding sample grid', () => {
+  const hist = new Float32Array([0, 0, 0, 0, 0, 1.0, 1.0, 0, 0, 0, 0, 0]);
+  const isp = evalTruePeakPolyphase4x(hist);
+  assert.ok(isp > 1.0, 'Interpolated peak must be larger than 1.0 for two consecutive 1.0 samples');
 });
 
 test('detectResonances identifies prominent spectral spikes', () => {
