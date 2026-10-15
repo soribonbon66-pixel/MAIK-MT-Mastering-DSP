@@ -77,9 +77,9 @@ test('computeSunoPrescription enforces Suno mud cut and genre parameters', () =>
   };
 
   const presc = computeSunoPrescription(mockMetrics, 'reggaeton');
-  assert.equal(presc.targetLufs, -8.5);
+  assert.equal(presc.targetLufs, -12);
   assert.ok(presc.eqGains.mud <= -1.8, 'Mud band should receive a negative corrective cut');
-  assert.ok(presc.mbLowThr < GENRE_PROFILES.reggaeton.mb.lowThr, 'High crest factor should tighten threshold');
+  assert.equal(presc.mbLowThr, GENRE_PROFILES.reggaeton.mb.lowThr, 'High crest factor should not force extra compression');
   assert.ok(presc.notes.length >= 3, 'Prescription should produce diagnostic engineering notes');
 });
 

@@ -66,53 +66,53 @@ export interface GenreProfile {
 export const GENRE_PROFILES: Record<string, GenreProfile> = {
   reggaeton: {
     label: "REGGAETON / DEMBOW",
-    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, strong 310Hz mud cut, upfront vocals, -8.5 LUFS]",
-    targetLufs: -8.5,
+    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, strong 310Hz mud cut, upfront vocals, -12 LUFS]",
+    targetLufs: -12.0,
     offsets: { sub: -4.4, bass: -2.5, mud: -8.8, mid: -3.9, harsh: -9.8, air: -10.8 },
-    mb: { lowThr: -18.5, midThr: -16.5, highThr: -18.5, lowRat: 3.2, midRat: 2.3, highRat: 2.4 },
+    mb: { lowThr: -18.5, midThr: -16.5, highThr: -18.5, lowRat: 2.0, midRat: 1.6, highRat: 1.5 },
     msWidth: 114,
     msMonoFreq: 120,
-    satDrive: 13
+    satDrive: 0
   },
   techhouse: {
     label: "TECH HOUSE / CLUB",
-    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, scooped boxiness, crisp hats, -8.0 LUFS]",
-    targetLufs: -8.0,
+    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, scooped boxiness, crisp hats, -11.5 LUFS]",
+    targetLufs: -11.5,
     offsets: { sub: -4.2, bass: -2.3, mud: -9.2, mid: -4.9, harsh: -9.6, air: -10.2 },
-    mb: { lowThr: -19.0, midThr: -17.0, highThr: -18.0, lowRat: 3.5, midRat: 2.2, highRat: 2.5 },
+    mb: { lowThr: -19.0, midThr: -17.0, highThr: -18.0, lowRat: 2.2, midRat: 1.7, highRat: 1.6 },
     msWidth: 120,
     msMonoFreq: 130,
-    satDrive: 11
+    satDrive: 0
   },
   hardstyle: {
     label: "HARDSTYLE / FESTIVAL",
-    desc: "[Hardstyle / Harder Styles: Massive sub & reverse-bass density, tamed 3.8kHz screech harshness, wide stereo leads, -7.5 LUFS]",
-    targetLufs: -7.5,
+    desc: "[Hardstyle / Harder Styles: Massive sub & reverse-bass density, tamed 3.8kHz screech harshness, wide stereo leads, -10.5 LUFS]",
+    targetLufs: -10.5,
     offsets: { sub: -4.5, bass: -2.0, mud: -8.7, mid: -4.1, harsh: -9.4, air: -10.0 },
-    mb: { lowThr: -20.0, midThr: -18.0, highThr: -19.0, lowRat: 3.8, midRat: 2.6, highRat: 2.8 },
+    mb: { lowThr: -20.0, midThr: -18.0, highThr: -19.0, lowRat: 2.5, midRat: 1.8, highRat: 1.8 },
     msWidth: 126,
     msMonoFreq: 110,
-    satDrive: 18
+    satDrive: 1
   },
   streaming: {
     label: "MODERN STREAMING",
-    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -10.5 LUFS]",
-    targetLufs: -10.5,
+    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -12 LUFS]",
+    targetLufs: -12.0,
     offsets: { sub: -5.2, bass: -3.0, mud: -8.2, mid: -4.4, harsh: -9.8, air: -11.2 },
-    mb: { lowThr: -17.0, midThr: -15.5, highThr: -17.5, lowRat: 2.6, midRat: 2.0, highRat: 2.2 },
+    mb: { lowThr: -17.0, midThr: -15.5, highThr: -17.5, lowRat: 1.8, midRat: 1.5, highRat: 1.4 },
     msWidth: 110,
     msMonoFreq: 110,
-    satDrive: 9
+    satDrive: 0
   },
   trap: {
     label: "TRAP / HIP HOP",
-    desc: "[Trap / Urban: Ground-shaking 808 sub, crisp hi-hat air, crisp snare transients, controlled boxiness, -8.5 LUFS]",
-    targetLufs: -8.5,
+    desc: "[Trap / Urban: Ground-shaking 808 sub, crisp hi-hat air, crisp snare transients, controlled boxiness, -11.5 LUFS]",
+    targetLufs: -11.5,
     offsets: { sub: -3.8, bass: -2.8, mud: -9.0, mid: -4.2, harsh: -9.5, air: -10.0 },
-    mb: { lowThr: -19.5, midThr: -17.0, highThr: -18.0, lowRat: 3.4, midRat: 2.2, highRat: 2.6 },
+    mb: { lowThr: -19.5, midThr: -17.0, highThr: -18.0, lowRat: 2.1, midRat: 1.7, highRat: 1.6 },
     msWidth: 118,
     msMonoFreq: 125,
-    satDrive: 14
+    satDrive: 0
   }
 };
 
@@ -298,14 +298,10 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
   });
 
   let { lowThr, midThr, highThr, lowRat, midRat, highRat } = profile.mb;
-  if (metrics.crestDb > 13.0) {
-    lowThr -= 1.5;
-    midThr -= 1.5;
-    notes.push(`High Crest Factor [${metrics.crestDb.toFixed(1)} dB]: Tightened LR4 Multiband thresholds by -1.5 dB.`);
-  }
+  
 
   const msWidth = metrics.phaseCorr > 0.75 ? profile.msWidth : Math.max(104, profile.msWidth - 8);
-  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width at ${msWidth}%, Tape Drive at ${profile.satDrive}%.`);
+  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width at ${msWidth}%, Saturation drive at ${profile.satDrive}%.`);
 
   return {
     genreKey,

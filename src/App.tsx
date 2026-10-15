@@ -60,10 +60,10 @@ export default function App() {
     mbLowRat: 3.2,
     mbMidRat: 2.3,
     mbHighRat: 2.4,
-    targetLufs: -8.5,
+    targetLufs: -12.0,
     msWidth: 114,
     msMonoFreq: 120,
-    satDrive: 13,
+    satDrive: 0,
     ceilingDb: -1.0,
   });
 
