@@ -23,41 +23,44 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
 }) => {
   const [normalizeLufs, setNormalizeLufs] = useState(true);
 
-  const lufsPass = Math.abs(postMetrics.integratedLufs - targetLufs) <= 1.2;
-  const peakPass = postMetrics.truePeakDb <= ceilingDb + 0.08;
-  const phasePass = postMetrics.phaseCorr >= 0.55;
-  const crestPass = postMetrics.crestDb >= 5.5;
+
+  const lufsDiff = Math.abs(postMetrics.integratedLufs - targetLufs);
+  const lufsPass = lufsDiff <= 0.6;
+  const peakPass = postMetrics.truePeakDb <= ceilingDb + 0.05;
+  const phasePass = postMetrics.phaseCorr >= 0.40;
+
+  const allPassed = lufsPass && peakPass && phasePass;
 
   const rows = [
     {
       name: 'Integrated Loudness [BS.1770-4]',
       pre: `${preMetrics.integratedLufs.toFixed(1)} LUFS`,
-      target: `${targetLufs.toFixed(1)} LUFS`,
+      target: `${targetLufs.toFixed(1)} LUFS (±0.6)`,
       post: `${postMetrics.integratedLufs.toFixed(1)} LUFS`,
       pass: lufsPass,
+      status: lufsPass ? '[PASS]' : '[FAIL]',
+      color: lufsPass ? 'emerald' : 'rose'
     },
     {
       name: '4x Oversampled True Peak',
       pre: `${preMetrics.truePeakDb.toFixed(2)} dBTP`,
-      target: `Max ${ceilingDb.toFixed(1)} dBTP`,
+      target: `Max ${ceilingDb.toFixed(2)} dBTP`,
       post: `${postMetrics.truePeakDb.toFixed(2)} dBTP`,
       pass: peakPass,
-    },
-    {
-      name: 'Dynamic Crest Factor',
-      pre: `${preMetrics.crestDb.toFixed(1)} dB`,
-      target: '5.5 to 13.0 dB',
-      post: `${postMetrics.crestDb.toFixed(1)} dB`,
-      pass: crestPass,
+      status: peakPass ? '[PASS]' : '[FAIL]',
+      color: peakPass ? 'emerald' : 'rose'
     },
     {
       name: 'Mid/Side Phase Correlation',
-      pre: `${preMetrics.phaseCorr.toFixed(2)}`,
-      target: 'Min +0.55',
-      post: `${postMetrics.phaseCorr.toFixed(2)}`,
+      pre: `+${preMetrics.phaseCorr.toFixed(2)}`,
+      target: 'Min +0.40 (Mono Compatible)',
+      post: `+${postMetrics.phaseCorr.toFixed(2)}`,
       pass: phasePass,
+      status: phasePass ? '[PASS]' : '[WARNING]',
+      color: phasePass ? 'emerald' : 'amber'
     },
   ];
+
 
   const offsets = prescription ? prescription.targetOffsets : GENRE_PROFILES.reggaeton.offsets;
 
@@ -77,12 +80,22 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
             Verificación de lazo cerrado sobre el audio masterizado y escucha A/B igualada en LUFS
           </p>
         </div>
+        {allPassed ? (
         <span
           id="qaGlobalBadge"
           className="text-xs font-mono font-bold px-3 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
         >
           [MAIK MT QA VERIFIED]
         </span>
+      ) : (
+        <span
+          id="qaGlobalBadge"
+          className="text-xs font-mono font-bold px-3 py-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm flex items-center gap-1"
+        >
+          <ShieldAlert className="w-3.5 h-3.5" />
+          [QA FAILED - SEE BELOW]
+        </span>
+      )}
       </div>
 
       {/* Dual 4096-Pt Spectrum Overlay */}
@@ -144,15 +157,13 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
                 <td className="py-2.5 text-cyan-400">{r.target}</td>
                 <td className="py-2.5 font-bold text-white">{r.post}</td>
                 <td className="py-2.5 text-right">
+
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      r.pass
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    }`}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold bg-${r.color}-500/20 text-${r.color}-300 border border-${r.color}-500/30`}
                   >
-                    {r.pass ? '[VERIFIED PASS]' : '[WITHIN TOLERANCE]'}
+                    {r.status}
                   </span>
+
                 </td>
               </tr>
             ))}

@@ -15,7 +15,7 @@ import {
   computeSunoPrescription,
   bufferToWav24BitTPDF,
   generateSunoDemoBuffer,
-  evalHermite4xPeak,
+  evalTruePeakPolyphase4x,
 } from './audio/dspLogic.ts';
 import type { AudioMetrics, Prescription } from './audio/dspLogic.ts';
 import {
@@ -80,6 +80,17 @@ export default function App() {
   // Modals & Tilt
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
   const { tilt, toggleTilt } = useDeviceTilt();
+
+  // Invalidate master and QA if parameters change after a render
+  useEffect(() => {
+    if (masteredBuffer) {
+      setMasteredBuffer(null);
+      setPostMetrics(null);
+      updateStatus('[PARAMS CHANGED - RE-RENDER REQUIRED]', 'amber');
+      logMobile('Parameters modified. Previous master invalidated.');
+    }
+  }, [eqGains, enableNotches, notchCuts, dynamicsParams]);
+
 
   // Web Audio Contexts & References
   const globalAudioCtxRef = useRef<AudioContext | null>(null);
@@ -522,13 +533,14 @@ export default function App() {
         });
       }
 
+
       // 4. Linkwitz-Riley LR4 3-Band Multiband Compressor
       const createLR4 = (type: BiquadFilterType, freq: number) => {
         const f1 = offCtx.createBiquadFilter();
         const f2 = offCtx.createBiquadFilter();
         f1.type = type;
         f1.frequency.value = freq;
-        f1.Q.value = 0.7071;
+        f1.Q.value = 0.7071; // Butterworth * 2 = LR4
         f2.type = type;
         f2.frequency.value = freq;
         f2.Q.value = 0.7071;
@@ -536,7 +548,25 @@ export default function App() {
         return { input: f1, output: f2 };
       };
 
-      const lowLP = createLR4('lowpass', 180);
+      // Correct 3-Way LR4 Crossover Topology
+      // Low Band: LP1(180Hz) -> AP2(3200Hz) to match phase of upper split
+      // Mid Band: HP1(180Hz) -> LP2(3200Hz)
+      // High Band: HP1(180Hz) -> HP2(3200Hz)
+
+      const split1LP = createLR4('lowpass', 180);
+      const split1HP = createLR4('highpass', 180);
+
+      const split2AP = createLR4('allpass', 3200); // Phase compensation for low band
+      const split2LP = createLR4('lowpass', 3200);
+      const split2HP = createLR4('highpass', 3200);
+
+      lastNode.connect(split1LP.input);
+      lastNode.connect(split1HP.input);
+
+      split1LP.output.connect(split2AP.input);
+      split1HP.output.connect(split2LP.input);
+      split1HP.output.connect(split2HP.input);
+
       const compLow = offCtx.createDynamicsCompressor();
       compLow.threshold.value = mbLowThr;
       compLow.ratio.value = mbLowRat;
@@ -544,8 +574,6 @@ export default function App() {
       compLow.attack.value = 0.025;
       compLow.release.value = 0.16;
 
-      const midHP = createLR4('highpass', 180);
-      const midLP = createLR4('lowpass', 3200);
       const compMid = offCtx.createDynamicsCompressor();
       compMid.threshold.value = mbMidThr;
       compMid.ratio.value = mbMidRat;
@@ -553,7 +581,6 @@ export default function App() {
       compMid.attack.value = 0.012;
       compMid.release.value = 0.11;
 
-      const highHP = createLR4('highpass', 3200);
       const compHigh = offCtx.createDynamicsCompressor();
       compHigh.threshold.value = mbHighThr;
       compHigh.ratio.value = mbHighRat;
@@ -564,23 +591,21 @@ export default function App() {
       const sumBus = offCtx.createGain();
       sumBus.gain.value = 1.0;
 
-      lastNode.connect(lowLP.input);
-      lowLP.output.connect(compLow);
+      split2AP.output.connect(compLow);
       compLow.connect(sumBus);
 
-      lastNode.connect(midHP.input);
-      midHP.output.connect(midLP.input);
-      midLP.output.connect(compMid);
+      split2LP.output.connect(compMid);
       compMid.connect(sumBus);
 
-      midHP.output.connect(highHP.input);
-      highHP.output.connect(compHigh);
+      split2HP.output.connect(compHigh);
       compHigh.connect(sumBus);
+
 
       sumBus.connect(offCtx.destination);
       src.start(0);
 
       const stageBuffer = await offCtx.startRendering();
+
 
       // 5. Mid/Side Matrix & Tape Warmth Saturation
       const driveK = (satDrive / 100.0) * 2.2;
@@ -612,18 +637,21 @@ export default function App() {
 
           side = hp2 * widthCoeff;
 
-          mid = saturate(mid);
-          side = saturate(side);
+          // Reconstruct to L/R *before* saturation to preserve natural stereo image correlation
+          let l = mid + side;
+          let r = mid - side;
 
-          L[i] = mid + side;
-          R[i] = mid - side;
+          L[i] = saturate(l);
+          R[i] = saturate(r);
         }
       } else {
         const M = stageBuffer.getChannelData(0);
         for (let i = 0; i < len; i++) M[i] = saturate(M[i]);
       }
 
-      // 6. Loudness Calibration & Lookahead 4x Hermite True Peak Limiter
+
+
+      // 6. Loudness Calibration & Lookahead 4x Polyphase True Peak Limiter
       const midMetrics = await analyzeAudioBuffer(stageBuffer);
       const neededGainDb = Math.min(14.0, Math.max(-14.0, targetLufs - midMetrics.integratedLufs));
       const linearGain = Math.pow(10, neededGainDb / 20.0);
@@ -639,35 +667,86 @@ export default function App() {
         channelsArray.push(outD);
       }
 
+
+      // Calculate True Peak required gain envelope using Polyphase filter
       const reqGain = new Float32Array(len);
+      const histBuffer = new Float32Array(12 * chCount); // history per channel
+
       for (let i = 0; i < len; i++) {
         let maxISP = 0;
         for (let c = 0; c < chCount; c++) {
           const ch = channelsArray[c];
-          let tp = Math.abs(ch[i]);
-          if (i >= 1 && i < len - 2) {
-            tp = evalHermite4xPeak(ch[i - 1], ch[i], ch[i + 1], ch[i + 2]);
+          const cOffset = c * 12;
+
+          // shift history manually
+          histBuffer[cOffset + 11] = histBuffer[cOffset + 10];
+          histBuffer[cOffset + 10] = histBuffer[cOffset + 9];
+          histBuffer[cOffset + 9] = histBuffer[cOffset + 8];
+          histBuffer[cOffset + 8] = histBuffer[cOffset + 7];
+          histBuffer[cOffset + 7] = histBuffer[cOffset + 6];
+          histBuffer[cOffset + 6] = histBuffer[cOffset + 5];
+          histBuffer[cOffset + 5] = histBuffer[cOffset + 4];
+          histBuffer[cOffset + 4] = histBuffer[cOffset + 3];
+          histBuffer[cOffset + 3] = histBuffer[cOffset + 2];
+          histBuffer[cOffset + 2] = histBuffer[cOffset + 1];
+          histBuffer[cOffset + 1] = histBuffer[cOffset + 0];
+          histBuffer[cOffset + 0] = ch[i]; // Insert newest
+
+          let tp = 0;
+          if (i >= 11) {
+              // Instead of creating a view, we do the polyphase filter inline or extract the buffer manually
+              const chHist = histBuffer.subarray(cOffset, cOffset + 12);
+              tp = evalTruePeakPolyphase4x(chHist);
+          } else {
+              tp = Math.abs(ch[i]);
           }
           if (tp > maxISP) maxISP = tp;
         }
         reqGain[i] = maxISP > ceilingLin * 0.992 ? (ceilingLin * 0.992) / maxISP : 1.0;
       }
 
+      // O(N) Sliding Window Minimum Filter for Lookahead + Exponential Release
       const lookahead = Math.max(2, Math.floor(sr * 0.003));
       const relCoeff = Math.exp(-1.0 / (sr * 0.065));
+      const envBuffer = new Float32Array(len);
+
+      // We process backwards or use a deque for true O(N) sliding minimum.
+      // We will use a fast 2-pass approach:
+      // Pass 1: O(N) backward sliding min for lookahead
+      const windowMin = new Float32Array(len);
+      // Pre-allocate deque arrays to avoid GC thrashing
+      const dqIdx = new Int32Array(len);
+      const dqVal = new Float32Array(len);
+      let dqHead = 0;
+      let dqTail = 0;
+
+      for (let i = len - 1; i >= 0; i--) {
+         const val = reqGain[i];
+         while (dqTail > dqHead && dqVal[dqTail - 1] >= val) {
+            dqTail--;
+         }
+         dqIdx[dqTail] = i;
+         dqVal[dqTail] = val;
+         dqTail++;
+
+         while (dqTail > dqHead && dqIdx[dqHead] >= i + lookahead) {
+            dqHead++;
+         }
+         windowMin[i] = dqVal[dqHead];
+      }
+
+      // Pass 2: Forward Exponential Attack/Release Envelope
       let env = 1.0;
 
+
       for (let i = 0; i < len; i++) {
-        let minTarget = 1.0;
-        const endW = Math.min(len, i + lookahead);
-        for (let w = i; w < endW; w++) {
-          if (reqGain[w] < minTarget) minTarget = reqGain[w];
-        }
-        if (minTarget < env) {
-          env = minTarget;
+        const target = windowMin[i];
+        if (target < env) {
+          env = target; // Instant attack to sliding minimum
         } else {
-          env = relCoeff * env + (1.0 - relCoeff) * minTarget;
+          env = relCoeff * env + (1.0 - relCoeff) * target; // Smooth release
         }
+        envBuffer[i] = env;
         for (let c = 0; c < chCount; c++) {
           let s = channelsArray[c][i] * env;
           if (s > ceilingLin) s = ceilingLin;
@@ -675,6 +754,7 @@ export default function App() {
           channelsArray[c][i] = s;
         }
       }
+
 
       updateStatus('[AUDITING MASTER QA...]', 'amber');
       const auditedMetrics = await analyzeAudioBuffer(finalBuffer);
@@ -693,16 +773,58 @@ export default function App() {
     }
   };
 
+
   // WAV Download Handler
-  const handleDownloadWav = () => {
+  const handleDownloadWav = async () => {
     if (!masteredBuffer) return;
-    const genreTag = selectedGenre.toUpperCase();
-    const wavBlob = bufferToWav24BitTPDF(masteredBuffer, true);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(wavBlob);
-    a.download = `${fileName || 'track'}_MAIK_MT_${genreTag}_24BIT.wav`;
-    a.click();
+
+    updateStatus('[ENCODING 24-BIT WAV...]', 'cyan');
+    setIsProcessing(true);
+
+    try {
+      const genreTag = selectedGenre.toUpperCase();
+      const wavBlob = bufferToWav24BitTPDF(masteredBuffer, true);
+
+      updateStatus('[VERIFYING EXPORTED WAV...]', 'amber');
+      logMobile('Re-decoding generated WAV to verify export integrity...');
+
+      const arrayBuf = await wavBlob.arrayBuffer();
+      const ctx = getAudioContext();
+      const decodedBuf = await ctx.decodeAudioData(arrayBuf);
+
+      const expMetrics = await analyzeAudioBuffer(decodedBuf);
+
+      // Verification rules
+      const tpPass = expMetrics.truePeakDb <= dynamicsParams.ceilingDb + 0.05;
+      const lufsPass = Math.abs(expMetrics.integratedLufs - dynamicsParams.targetLufs) <= 0.6;
+
+      if (!tpPass || !lufsPass) {
+         logMobile(`Export Verification FAILED: LUFS ${expMetrics.integratedLufs.toFixed(1)}, Peak ${expMetrics.truePeakDb.toFixed(2)} dBTP`);
+         updateStatus('[EXPORT VERIFICATION FAILED]', 'rose');
+         alert(`El archivo exportado no cumple con el techo configurado o LUFS. True Peak: ${expMetrics.truePeakDb.toFixed(2)} dBTP.`);
+         setIsProcessing(false);
+         return;
+      }
+
+      logMobile(`Export Verified [PASS] - LUFS: ${expMetrics.integratedLufs.toFixed(1)}, Peak: ${expMetrics.truePeakDb.toFixed(2)} dBTP`);
+      updateStatus('[MAIK MT QA VERIFIED]', 'emerald');
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(wavBlob);
+      a.download = `${fileName || 'track'}_MAIK_MT_${genreTag}_24BIT.wav`;
+      a.click();
+
+      // Cleanup to prevent memory leaks
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+
+    } catch(err) {
+      logMobile(`Export Error: ${(err as Error).message}`);
+      updateStatus('[EXPORT ERROR]', 'rose');
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
 
   // Compensation text for A/B console
   const getCompensationInfo = () => {
