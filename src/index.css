@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background: radial-gradient(circle at 50% 0%, #0d121f 0%, #06080e 65%, #030407 100%);
+    color: #e2e8f0;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+}
+
+.obsidian-card {
+  background: linear-gradient(145deg, rgba(16, 22, 36, 0.94), rgba(9, 13, 22, 0.96));
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.obsidian-badge {
+  background: radial-gradient(circle at 30% 30%, #2b3852, #0a0d17 80%);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 18px rgba(6, 182, 212, 0.3), inset 0 0 8px rgba(34, 211, 238, 0.25);
+}
+
+.obsidian-glow-cyan {
+  box-shadow: 0 0 25px -4px rgba(6, 182, 212, 0.35);
+}
+
+.obsidian-glow-emerald {
+  box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.35);
+}
+
+input[type="range"] {
+  accent-color: #06b6d4;
+}
+
+canvas {
+  image-rendering: crisp-edges;
+}
+
+/* Custom scrollbar for diagnostic and log boxes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.25);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.5);
+}

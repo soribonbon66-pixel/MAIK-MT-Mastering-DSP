@@ -1,0 +1,6 @@
+{
+  "name": "MAIK MT Studio Mastering DSP",
+  "description": "Professional AI track mastering suite with Dual 4096-FFT, LR4 Multiband dynamics, M/S stereo matrix, 4x True-Peak limiter, and loudness-matched A/B audition deck.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
