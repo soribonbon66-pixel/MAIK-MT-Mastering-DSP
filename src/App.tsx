@@ -757,7 +757,27 @@ export default function App() {
 
 
       updateStatus('[AUDITING MASTER QA...]', 'amber');
-      const auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+      let auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+
+      // Closed-loop loudness trim: one conservative post-render correction.
+      // Never boost if the measured true peak predicts a ceiling violation.
+      const loudnessErrorDb = targetLufs - auditedMetrics.integratedLufs;
+      if (Math.abs(loudnessErrorDb) > 0.6) {
+        const correctionDb = Math.max(-3, Math.min(3, loudnessErrorDb));
+        const predictedPeakDb = auditedMetrics.truePeakDb + correctionDb;
+        if (correctionDb <= 0 || predictedPeakDb <= ceilingDb - 0.08) {
+          const correctionGain = Math.pow(10, correctionDb / 20);
+          for (let ch = 0; ch < chCount; ch++) {
+            const data = finalBuffer.getChannelData(ch);
+            for (let i = 0; i < len; i++) data[i] *= correctionGain;
+          }
+          logMobile(`Closed-loop QA: applied ${correctionDb.toFixed(2)} dB final gain trim; re-measuring render.`);
+          auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+        } else {
+          logMobile(`Closed-loop QA: skipped +${correctionDb.toFixed(2)} dB loudness correction because predicted peak ${predictedPeakDb.toFixed(2)} dBTP would exceed the safe ceiling. Loudness remains secondary to peak safety.`);
+        }
+      }
+
       setMasteredBuffer(finalBuffer);
       setPostMetrics(auditedMetrics);
       setActiveMode('B');
