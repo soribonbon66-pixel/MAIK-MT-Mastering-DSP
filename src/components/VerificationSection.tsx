@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, CheckCircle2, ShieldAlert, BarChart3, Radio } from 'lucide-react';
+import { Download, CheckCircle2, BarChart3 } from 'lucide-react';
 import { SpectrumCanvas } from './SpectrumCanvas.tsx';
 import { BAND_DEFINITIONS, GENRE_PROFILES } from '../audio/dspLogic.ts';
 import type { AudioMetrics, Prescription } from '../audio/dspLogic.ts';
@@ -60,6 +60,17 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
   ];
 
   const offsets = prescription ? prescription.targetOffsets : GENRE_PROFILES.reggaeton.offsets;
+  // Tonal targets are guidance; large mismatches must not be hidden by technical PASS.
+  const spectralRows = BAND_DEFINITIONS.map((b) => {
+    const pre = preMetrics.bandDb[b.id] ?? 0;
+    const post = postMetrics.bandDb[b.id] ?? 0;
+    const target = offsets[b.id] ?? 0;
+    const error = post - target;
+    return { ...b, pre, post, target, delta: post - pre, error, pass: Math.abs(error) <= 3.0 };
+  });
+  const spectralPass = spectralRows.every((band) => band.pass);
+  const technicalPass = lufsPass && peakPass && phasePass && crestPass;
+  const overallPass = technicalPass && spectralPass;
 
   return (
     <section
@@ -79,9 +90,9 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
         </div>
         <span
           id="qaGlobalBadge"
-          className="text-xs font-mono font-bold px-3 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+          className={`text-xs font-mono font-bold px-3 py-1 rounded border shadow-sm ${overallPass ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'}`}
         >
-          [MAIK MT QA VERIFIED]
+          {overallPass ? '[TECHNICAL + TONAL QA PASS]' : !technicalPass ? '[TECHNICAL QA REVIEW]' : '[TONAL QA REVIEW]'}
         </span>
       </div>
 
@@ -164,29 +175,26 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
       <div className="space-y-2 bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
         <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 uppercase">
           <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Balance Espectral Pre vs Post [6-Band Relative Energy dB]</span>
+          <span>Balance espectral: post vs objetivo [tolerancia ±3 dB]</span>
         </div>
         <div id="spectralComparisonBars" className="space-y-2 pt-1">
-          {BAND_DEFINITIONS.map((b) => {
-            const preV = preMetrics.bandDb[b.id] ?? 0;
-            const postV = postMetrics.bandDb[b.id] ?? 0;
-            const delta = postV - preV;
-            const target = offsets[b.id] ?? 0;
-            return (
-              <div key={b.id} className="text-[11px] font-mono border-b border-slate-800/40 pb-1.5">
-                <div className="flex justify-between items-center text-slate-300 mb-0.5">
-                  <span className="font-semibold">{b.name}</span>
-                  <span className="text-slate-400">
-                    Pre: {preV.toFixed(1)}dB → Post:{' '}
-                    <b className="text-emerald-400">{postV.toFixed(1)}dB</b> (Target: {target.toFixed(1)}dB)
-                    <span className={`ml-1.5 font-bold ${delta >= 0 ? 'text-cyan-400' : 'text-amber-400'}`}>
-                      [{delta >= 0 ? '+' : ''}{delta.toFixed(1)}dB]
-                    </span>
+          {spectralRows.map((b) => (
+            <div key={b.id} className="text-[11px] font-mono border-b border-slate-800/40 pb-1.5">
+              <div className="flex flex-wrap justify-between items-center gap-x-3 text-slate-300 mb-0.5">
+                <span className="font-semibold">{b.name}</span>
+                <span className="text-slate-400">
+                  Pre: {b.pre.toFixed(1)} dB → Post: <b className="text-white">{b.post.toFixed(1)} dB</b>
+                  {' '}· Objetivo: {b.target.toFixed(1)} dB
+                  <span className={`ml-1.5 font-bold ${b.pass ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    [{b.error >= 0 ? '+' : ''}{b.error.toFixed(1)} dB vs objetivo]
                   </span>
-                </div>
+                  <span className={`ml-2 font-bold ${b.pass ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {b.pass ? '[IN RANGE]' : '[REVIEW]'}
+                  </span>
+                </span>
               </div>
-            );
-          })}
+            </div>
+          ))}})}
         </div>
       </div>
 
