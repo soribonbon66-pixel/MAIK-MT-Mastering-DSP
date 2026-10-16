@@ -54,16 +54,16 @@ export default function App() {
 
   // Dynamics & Limiter State
   const [dynamicsParams, setDynamicsParams] = useState({
-    mbLowThr: -18.5,
-    mbMidThr: -16.5,
-    mbHighThr: -18.5,
-    mbLowRat: 3.2,
-    mbMidRat: 2.3,
-    mbHighRat: 2.4,
-    targetLufs: -8.5,
+    mbLowThr: -14.0,
+    mbMidThr: -12.0,
+    mbHighThr: -14.0,
+    mbLowRat: 2.2,
+    mbMidRat: 1.8,
+    mbHighRat: 1.8,
+    targetLufs: -12.0,
     msWidth: 114,
     msMonoFreq: 120,
-    satDrive: 13,
+    satDrive: 0,
     ceilingDb: -1.0,
   });
 
@@ -610,7 +610,12 @@ export default function App() {
       // 5. Mid/Side Matrix & Tape Warmth Saturation
       const driveK = (satDrive / 100.0) * 2.2;
       const tanhNorm = driveK > 0 ? Math.tanh(1 + driveK) : 1.0;
-      const saturate = (x: number) => (driveK > 0 ? Math.tanh(x * (1 + driveK)) / tanhNorm : x);
+
+      // True bypass logic for saturation - explicitly avoid Math.tanh completely if driveK is 0 or less
+      const saturate = (x: number) => {
+        if (driveK <= 0) return x;
+        return Math.tanh(x * (1 + driveK)) / tanhNorm;
+      };
 
       if (chCount > 1) {
         const L = stageBuffer.getChannelData(0);
@@ -641,12 +646,14 @@ export default function App() {
           let l = mid + side;
           let r = mid - side;
 
-          L[i] = saturate(l);
-          R[i] = saturate(r);
+          L[i] = driveK > 0 ? saturate(l) : l;
+          R[i] = driveK > 0 ? saturate(r) : r;
         }
       } else {
         const M = stageBuffer.getChannelData(0);
-        for (let i = 0; i < len; i++) M[i] = saturate(M[i]);
+        if (driveK > 0) {
+          for (let i = 0; i < len; i++) M[i] = saturate(M[i]);
+        }
       }
 
 
