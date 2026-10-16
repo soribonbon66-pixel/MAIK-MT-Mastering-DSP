@@ -288,7 +288,10 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
       notes.push(`Suno Low-Mid De-Mud [310Hz]: ${suggestedGain.toFixed(1)} dB cut for clean ${profile.label} punch.`);
     } else if (b.id === "harsh") {
       if (suggestedGain > -1.5) suggestedGain = -1.5;
-      notes.push(`AI Metallic Upper-Mid Control [3.85kHz]: ${suggestedGain.toFixed(1)} dB cut.`);
+      // Subtle extra attenuation to soften bright/metallic vocals without
+      // broadly darkening the mix or changing loudness/limiter targets.
+      suggestedGain = Math.max(-4.8, suggestedGain - 1.0);
+      notes.push(`AI Metallic Upper-Mid Control [3.85kHz]: ${suggestedGain.toFixed(1)} dB cut (includes subtle vocal-softening trim).`);
     }
     eqGains[b.id] = Number(suggestedGain.toFixed(1));
   });
