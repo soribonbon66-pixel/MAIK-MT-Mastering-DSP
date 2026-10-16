@@ -274,37 +274,90 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
   const profile = GENRE_PROFILES[genreKey] || GENRE_PROFILES.reggaeton;
   const eqGains: Record<string, number> = {};
   const notes: string[] = [
-    `Active MAIK MT Target Curve: [${profile.label}] calibrated for ${profile.targetLufs.toFixed(1)} LUFS.`
+    `Active MAIK MT Target Curve: [${profile.label}] calibrated for ${profile.targetLufs.toFixed(1)} LUFS.`,
+    "Adaptive analysis: spectral balance, harshness, resonances, crest factor, true peak and stereo correlation evaluated."
   ];
+
+  // Spectral bands are normalized to total measured spectrum. These rules are
+  // deliberately bounded: they adapt the generic genre curve without chasing
+  // every small fluctuation or radically changing the character of a song.
+  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+  const band = (id: string, fallback = -10) => metrics.bandDb[id] ?? fallback;
+  const highEnergy = (band("harsh") + band("air")) / 2;
+  const lowEnergy = (band("sub") + band("bass")) / 2;
+  const midEnergy = band("mid");
 
   BAND_DEFINITIONS.forEach(b => {
     const targetOffset = profile.offsets[b.id] ?? -6;
-    const measuredRel = metrics.bandDb[b.id] ?? -10;
+    const measuredRel = band(b.id);
     const error = targetOffset - measuredRel;
-    let suggestedGain = Math.max(-4.8, Math.min(4.8, error * 0.62));
+    let suggestedGain = clamp(error * 0.62, -4.8, 4.8);
+
+    // Broad, content-aware trims. Each is capped to avoid over-EQ from a
+    // single measurement; narrow resonance notches remain a separate stage.
+    if (b.id === "sub" && lowEnergy > -8) suggestedGain -= 0.6;
+    if (b.id === "bass" && band("bass") - band("sub") > 5) suggestedGain -= 0.5;
+    if (b.id === "mud" && (band("mud") - midEnergy) > 1.5) suggestedGain -= 0.7;
+    if (b.id === "mid" && midEnergy < -16) suggestedGain += 0.4;
+    if (b.id === "harsh") {
+      const harshnessExcess = clamp((band("harsh") - midEnergy - 1.5) * 0.28, 0, 1.6);
+      suggestedGain -= harshnessExcess;
+      // A small global safety bias helps with the metallic upper-mid artifacts
+      // often found in AI-generated vocals, without forcing a dark master.
+      suggestedGain -= 0.6;
+      suggestedGain = clamp(suggestedGain, -4.8, -1.0);
+      notes.push(`AI Metallic Upper-Mid Control [2.5-6kHz]: ${suggestedGain.toFixed(1)} dB; adaptive harshness trim ${harshnessExcess.toFixed(1)} dB.`);
+    }
+    if (b.id === "air" && band("air") > -5) suggestedGain -= 0.5;
+    if (b.id !== "harsh") suggestedGain = clamp(suggestedGain, -4.8, 4.8);
 
     if (b.id === "mud") {
       if (suggestedGain > -1.8) suggestedGain = -1.8;
-      notes.push(`Suno Low-Mid De-Mud [310Hz]: ${suggestedGain.toFixed(1)} dB cut for clean ${profile.label} punch.`);
-    } else if (b.id === "harsh") {
-      if (suggestedGain > -1.5) suggestedGain = -1.5;
-      // Subtle extra attenuation to soften bright/metallic vocals without
-      // broadly darkening the mix or changing loudness/limiter targets.
-      suggestedGain = Math.max(-4.8, suggestedGain - 1.0);
-      notes.push(`AI Metallic Upper-Mid Control [3.85kHz]: ${suggestedGain.toFixed(1)} dB cut (includes subtle vocal-softening trim).`);
+      notes.push(`Adaptive Low-Mid De-Mud [180-480Hz]: ${suggestedGain.toFixed(1)} dB.`);
     }
     eqGains[b.id] = Number(suggestedGain.toFixed(1));
   });
 
   metrics.resonances.forEach((r, idx) => {
-    notes.push(`FFT Notch #${idx + 1} [${r.freq} Hz, Q=${r.q.toFixed(1)}]: ${r.cutDb.toFixed(1)} dB surgical attenuation.`);
+    notes.push(`FFT Notch #${idx + 1} [${r.freq} Hz, prominence ${r.prominenceDb.toFixed(1)} dB, Q=${r.q.toFixed(1)}]: ${r.cutDb.toFixed(1)} dB surgical attenuation.`);
   });
+  if (metrics.resonances.length === 0) notes.push("Resonance scan: no strong isolated peaks detected; no surgical notch recommended.");
 
   let { lowThr, midThr, highThr, lowRat, midRat, highRat } = profile.mb;
-  
+  // Crest factor is a proxy, not a complete transient detector. Use gentle
+  // bounded adjustments only, and leave the profile's attack/release untouched.
+  if (metrics.crestDb > 14) {
+    lowRat = clamp(lowRat - 0.15, 1.2, 4);
+    midRat = clamp(midRat - 0.15, 1.2, 4);
+    highRat = clamp(highRat - 0.1, 1.2, 4);
+    notes.push(`Dynamics: high crest factor (${metrics.crestDb.toFixed(1)} dB); compression ratios eased to preserve transients.`);
+  } else if (metrics.crestDb < 7) {
+    lowRat = clamp(lowRat + 0.15, 1.2, 4);
+    midRat = clamp(midRat + 0.15, 1.2, 4);
+    highRat = clamp(highRat + 0.1, 1.2, 4);
+    notes.push(`Dynamics: low crest factor (${metrics.crestDb.toFixed(1)} dB); only a mild density increase is suggested.`);
+  } else {
+    notes.push(`Dynamics: crest factor ${metrics.crestDb.toFixed(1)} dB; profile compression retained.`);
+  }
 
-  const msWidth = metrics.phaseCorr > 0.75 ? profile.msWidth : Math.max(104, profile.msWidth - 8);
-  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width at ${msWidth}%, Saturation drive at ${profile.satDrive}%.`);
+  const msWidth = metrics.phaseCorr < 0 ? Math.max(100, profile.msWidth - 14)
+    : metrics.phaseCorr > 0.75 ? profile.msWidth
+    : Math.max(104, profile.msWidth - 8);
+  if (metrics.phaseCorr < 0) {
+    notes.push(`Stereo warning: negative L/R correlation (${metrics.phaseCorr.toFixed(2)}); width reduced conservatively to limit mono-compatibility risk.`);
+  } else {
+    notes.push(`Stereo analysis: correlation ${metrics.phaseCorr.toFixed(2)}; width set to ${msWidth}%.`);
+  }
+  if (metrics.truePeakDb > -1) {
+    notes.push(`Peak safety: source true peak is ${metrics.truePeakDb.toFixed(2)} dBTP; limiter ceiling remains -1.0 dBFS/dBTP target.`);
+  }
+  if (metrics.integratedLufs > profile.targetLufs + 2) {
+    notes.push(`Loudness: source is ${metrics.integratedLufs.toFixed(1)} LUFS, quieter than target by ${(metrics.integratedLufs - profile.targetLufs).toFixed(1)} LU; gain staging/limiter will need to supply the difference.`);
+  } else if (metrics.integratedLufs < profile.targetLufs - 2) {
+    notes.push(`Loudness: source is ${metrics.integratedLufs.toFixed(1)} LUFS, already louder than target by ${(profile.targetLufs - metrics.integratedLufs).toFixed(1)} LU; avoid unnecessary additional limiting.`);
+  }
+
+  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width ${msWidth}%, Saturation drive ${profile.satDrive}%.`);
 
   return {
     genreKey,
@@ -315,9 +368,9 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
     mbLowThr: lowThr,
     mbMidThr: midThr,
     mbHighThr: highThr,
-    mbLowRat: lowRat,
-    mbMidRat: midRat,
-    mbHighRat: highRat,
+    mbLowRat: Number(lowRat.toFixed(2)),
+    mbMidRat: Number(midRat.toFixed(2)),
+    mbHighRat: Number(highRat.toFixed(2)),
     msWidth,
     msMonoFreq: profile.msMonoFreq,
     satDrive: profile.satDrive,
