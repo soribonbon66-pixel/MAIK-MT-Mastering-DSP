@@ -194,7 +194,7 @@ export const VerificationSection: React.FC<VerificationSectionProps> = ({
                 </span>
               </div>
             </div>
-          ))}})}
+          ))}
         </div>
       </div>
 
