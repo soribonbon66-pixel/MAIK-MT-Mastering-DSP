@@ -54,16 +54,16 @@ export default function App() {
 
   // Dynamics & Limiter State
   const [dynamicsParams, setDynamicsParams] = useState({
-    mbLowThr: -18.5,
-    mbMidThr: -16.5,
-    mbHighThr: -18.5,
-    mbLowRat: 3.2,
-    mbMidRat: 2.3,
-    mbHighRat: 2.4,
-    targetLufs: -8.5,
+    mbLowThr: -14.0,
+    mbMidThr: -12.0,
+    mbHighThr: -14.0,
+    mbLowRat: 2.2,
+    mbMidRat: 1.8,
+    mbHighRat: 1.8,
+    targetLufs: -12.0,
     msWidth: 114,
     msMonoFreq: 120,
-    satDrive: 13,
+    satDrive: 0,
     ceilingDb: -1.0,
   });
 
@@ -610,7 +610,12 @@ export default function App() {
       // 5. Mid/Side Matrix & Tape Warmth Saturation
       const driveK = (satDrive / 100.0) * 2.2;
       const tanhNorm = driveK > 0 ? Math.tanh(1 + driveK) : 1.0;
-      const saturate = (x: number) => (driveK > 0 ? Math.tanh(x * (1 + driveK)) / tanhNorm : x);
+
+      // True bypass logic for saturation - explicitly avoid Math.tanh completely if driveK is 0 or less
+      const saturate = (x: number) => {
+        if (driveK <= 0) return x;
+        return Math.tanh(x * (1 + driveK)) / tanhNorm;
+      };
 
       if (chCount > 1) {
         const L = stageBuffer.getChannelData(0);
@@ -646,7 +651,9 @@ export default function App() {
         }
       } else {
         const M = stageBuffer.getChannelData(0);
-        for (let i = 0; i < len; i++) M[i] = saturate(M[i]);
+        if (driveK > 0) {
+          for (let i = 0; i < len; i++) M[i] = saturate(M[i]);
+        }
       }
 
 
@@ -757,13 +764,101 @@ export default function App() {
 
 
       updateStatus('[AUDITING MASTER QA...]', 'amber');
-      const auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+      let auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+
+      // Closed-loop loudness trim: one conservative post-render correction.
+      // Never boost if the measured true peak predicts a ceiling violation.
+      const loudnessErrorDb = targetLufs - auditedMetrics.integratedLufs;
+      if (Math.abs(loudnessErrorDb) > 0.6) {
+        const correctionDb = Math.max(-3, Math.min(3, loudnessErrorDb));
+        const predictedPeakDb = auditedMetrics.truePeakDb + correctionDb;
+        if (correctionDb <= 0 || predictedPeakDb <= ceilingDb - 0.08) {
+          const correctionGain = Math.pow(10, correctionDb / 20);
+          for (let ch = 0; ch < chCount; ch++) {
+            const data = finalBuffer.getChannelData(ch);
+            for (let i = 0; i < len; i++) data[i] *= correctionGain;
+          }
+          logMobile(`Closed-loop QA: applied ${correctionDb.toFixed(2)} dB final gain trim; re-measuring render.`);
+          auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+        } else {
+          logMobile(`Closed-loop QA: skipped +${correctionDb.toFixed(2)} dB loudness correction because predicted peak ${predictedPeakDb.toFixed(2)} dBTP would exceed the safe ceiling. Loudness remains secondary to peak safety.`);
+        }
+      }
+
+      // Iterative tonal QA: measure the rendered spectrum, apply at most one
+      // conservative correction pass, then re-check loudness and true peak.
+      // Corrections are intentionally small and only target clear band imbalances.
+      const tonalCorrections: Array<{ id: string; gainDb: number }> = [];
+      const tonalBands = auditedMetrics.bandDb;
+      const clampTonal = (v: number) => Math.max(-1.5, Math.min(1.5, v));
+      const mudExcess = (tonalBands.mud ?? -20) - (((tonalBands.bass ?? -20) + (tonalBands.mid ?? -20)) / 2);
+      const harshExcess = (tonalBands.harsh ?? -20) - (tonalBands.mid ?? -20);
+      const airExcess = (tonalBands.air ?? -20) - (tonalBands.mid ?? -20);
+      if (mudExcess > 5) tonalCorrections.push({ id: 'mud', gainDb: clampTonal(-(mudExcess - 5) * 0.18) });
+      if (harshExcess > 4.5) tonalCorrections.push({ id: 'harsh', gainDb: clampTonal(-(harshExcess - 4.5) * 0.16) });
+      if (airExcess > 7) tonalCorrections.push({ id: 'air', gainDb: clampTonal(-(airExcess - 7) * 0.12) });
+
+      const activeCorrections = tonalCorrections.filter(c => Math.abs(c.gainDb) >= 0.35);
+      if (activeCorrections.length) {
+        const correctionCtx = new OfflineAudioContext(chCount, len, sr);
+        const correctionSource = correctionCtx.createBufferSource();
+        correctionSource.buffer = finalBuffer;
+        let correctionNode: AudioNode = correctionSource;
+        for (const correction of activeCorrections) {
+          const band = BAND_DEFINITIONS.find(b => b.id === correction.id);
+          if (!band) continue;
+          const filter = correctionCtx.createBiquadFilter();
+          filter.type = band.type;
+          filter.frequency.value = band.freq;
+          filter.Q.value = band.q;
+          filter.gain.value = correction.gainDb;
+          correctionNode.connect(filter);
+          correctionNode = filter;
+        }
+        const correctionGain = correctionCtx.createGain();
+        correctionNode.connect(correctionGain);
+        correctionGain.connect(correctionCtx.destination);
+        correctionSource.start(0);
+        const correctedBuffer = await correctionCtx.startRendering();
+
+        // Replace the rendered data and enforce the selected peak ceiling after EQ.
+        let correctionPeak = 0;
+        for (let ch = 0; ch < chCount; ch++) {
+          const srcData = correctedBuffer.getChannelData(ch);
+          const dstData = finalBuffer.getChannelData(ch);
+          for (let i = 0; i < len; i++) {
+            dstData[i] = srcData[i];
+            correctionPeak = Math.max(correctionPeak, Math.abs(srcData[i]));
+          }
+        }
+        const safeLinearPeak = Math.pow(10, (ceilingDb - 0.08) / 20);
+        if (correctionPeak > safeLinearPeak) {
+          const safetyGain = safeLinearPeak / correctionPeak;
+          for (let ch = 0; ch < chCount; ch++) {
+            const data = finalBuffer.getChannelData(ch);
+            for (let i = 0; i < len; i++) data[i] *= safetyGain;
+          }
+        }
+        auditedMetrics = await analyzeAudioBuffer(finalBuffer);
+        logMobile(`Tonal QA correction pass: ${activeCorrections.map(c => `${c.id} ${c.gainDb.toFixed(1)} dB`).join(', ')}; re-measured LUFS ${auditedMetrics.integratedLufs.toFixed(2)}, true peak ${auditedMetrics.truePeakDb.toFixed(2)} dBTP.`);
+      } else {
+        logMobile('Tonal QA: no significant post-render band imbalance; no corrective EQ required.');
+      }
+
       setMasteredBuffer(finalBuffer);
       setPostMetrics(auditedMetrics);
       setActiveMode('B');
 
-      updateStatus('[MAIK MT QA VERIFIED]', 'emerald');
-      logMobile(`Master completed & QA audited! Post LUFS: ${auditedMetrics.integratedLufs.toFixed(1)}, Peak: ${auditedMetrics.truePeakDb.toFixed(2)} dBTP`);
+      // Never claim QA passed merely because processing completed. Verify the
+      // rendered buffer against the actual selected loudness and peak ceiling.
+      const lufsPass = Math.abs(auditedMetrics.integratedLufs - targetLufs) <= 0.6;
+      const peakPass = auditedMetrics.truePeakDb <= ceilingDb + 0.05;
+      if (lufsPass && peakPass) {
+        updateStatus('[MASTER QA PASS]', 'emerald');
+      } else {
+        updateStatus('[MASTER QA FAILED - REVIEW METRICS]', 'rose');
+      }
+      logMobile(`Master QA ${lufsPass && peakPass ? 'PASS' : 'FAIL'} — LUFS ${auditedMetrics.integratedLufs.toFixed(1)} (${lufsPass ? 'PASS' : 'FAIL'}), true peak ${auditedMetrics.truePeakDb.toFixed(2)} dBTP (${peakPass ? 'PASS' : 'FAIL'}).`);
     } catch (err) {
       console.error('Mastering error:', err);
       updateStatus('[DSP ERROR]', 'rose');
