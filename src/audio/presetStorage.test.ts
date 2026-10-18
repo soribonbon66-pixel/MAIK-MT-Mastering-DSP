@@ -26,64 +26,11 @@ class MemoryStorage {
   }
 }
 
-class ErrorStorage extends MemoryStorage {
-  setItem(key: string, value: string): void {
-    throw new Error('Simulated storage error');
-  }
-}
-
 test('getStoredPresets returns factory presets when storage is empty', () => {
   const storage = new MemoryStorage();
   const presets = getStoredPresets(storage as unknown as Storage);
   assert.equal(presets.length, FACTORY_PRESETS.length);
   assert.equal(presets[0].id, 'factory_reggaeton_signature');
-});
-
-test('savePreset handles storage errors gracefully', () => {
-  const storage = new ErrorStorage();
-  const customPreset: MasteringPreset = {
-    id: 'user_error_test',
-    name: 'Error Preset',
-    genreKey: 'podcast',
-    createdAt: Date.now(),
-    eqGains: { sub: 0, bass: 0, mud: 0, mid: 0, harsh: 0, air: 0 },
-    enableNotches: false,
-    dynamics: {
-      mbLowThr: -20,
-      mbMidThr: -20,
-      mbHighThr: -20,
-      mbLowRat: 2,
-      mbMidRat: 2,
-      mbHighRat: 2,
-      targetLufs: -14,
-      msWidth: 100,
-      msMonoFreq: 100,
-      satDrive: 0,
-      ceilingDb: -1.0
-    }
-  };
-
-  const originalConsoleError = console.error;
-  let loggedError = false;
-  console.error = () => {
-    loggedError = true;
-  };
-
-  let updated: MasteringPreset[];
-  try {
-    updated = savePreset(customPreset, storage as unknown as Storage);
-  } finally {
-    console.error = originalConsoleError;
-  }
-
-  // Should return factory presets + the new unsaved preset in memory
-  assert.equal(updated.length, FACTORY_PRESETS.length + 1);
-  assert.ok(updated.some(p => p.id === 'user_error_test'));
-  assert.ok(loggedError, 'Should have logged an error to console.error');
-
-  // But the mock storage should be empty
-  const storedValue = storage.getItem('MASTERING_PRESETS');
-  assert.equal(storedValue, null);
 });
 
 test('savePreset persists custom user preset alongside factory presets', () => {

@@ -66,53 +66,53 @@ export interface GenreProfile {
 export const GENRE_PROFILES: Record<string, GenreProfile> = {
   reggaeton: {
     label: "REGGAETON / DEMBOW",
-    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, clean mids, upfront vocals, -12.0 LUFS]",
-    targetLufs: -12.0,
-    offsets: { sub: -3.5, bass: -2.0, mud: -5.0, mid: -2.5, harsh: -6.0, air: -8.0 },
-    mb: { lowThr: -14.0, midThr: -12.0, highThr: -14.0, lowRat: 2.2, midRat: 1.8, highRat: 1.8 },
+    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, strong 310Hz mud cut, upfront vocals, -8.5 LUFS]",
+    targetLufs: -8.5,
+    offsets: { sub: -4.4, bass: -2.5, mud: -8.8, mid: -3.9, harsh: -9.8, air: -10.8 },
+    mb: { lowThr: -18.5, midThr: -16.5, highThr: -18.5, lowRat: 3.2, midRat: 2.3, highRat: 2.4 },
     msWidth: 114,
     msMonoFreq: 120,
-    satDrive: 0
+    satDrive: 13
   },
   techhouse: {
     label: "TECH HOUSE / CLUB",
-    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, clean mix, -11.5 LUFS]",
-    targetLufs: -11.5,
-    offsets: { sub: -3.5, bass: -2.0, mud: -5.5, mid: -3.0, harsh: -6.0, air: -7.5 },
-    mb: { lowThr: -14.5, midThr: -12.5, highThr: -13.5, lowRat: 2.5, midRat: 1.8, highRat: 2.0 },
+    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, scooped boxiness, crisp hats, -8.0 LUFS]",
+    targetLufs: -8.0,
+    offsets: { sub: -4.2, bass: -2.3, mud: -9.2, mid: -4.9, harsh: -9.6, air: -10.2 },
+    mb: { lowThr: -19.0, midThr: -17.0, highThr: -18.0, lowRat: 3.5, midRat: 2.2, highRat: 2.5 },
     msWidth: 120,
     msMonoFreq: 130,
-    satDrive: 0
+    satDrive: 11
   },
   hardstyle: {
     label: "HARDSTYLE / FESTIVAL",
-    desc: "[Hardstyle / Harder Styles: Sub & reverse-bass density, wide stereo leads, -10.5 LUFS]",
-    targetLufs: -10.5,
-    offsets: { sub: -3.8, bass: -1.8, mud: -5.0, mid: -2.8, harsh: -6.0, air: -7.0 },
-    mb: { lowThr: -15.5, midThr: -13.5, highThr: -14.5, lowRat: 2.8, midRat: 2.0, highRat: 2.2 },
+    desc: "[Hardstyle / Harder Styles: Massive sub & reverse-bass density, tamed 3.8kHz screech harshness, wide stereo leads, -7.5 LUFS]",
+    targetLufs: -7.5,
+    offsets: { sub: -4.5, bass: -2.0, mud: -8.7, mid: -4.1, harsh: -9.4, air: -10.0 },
+    mb: { lowThr: -20.0, midThr: -18.0, highThr: -19.0, lowRat: 3.8, midRat: 2.6, highRat: 2.8 },
     msWidth: 126,
     msMonoFreq: 110,
-    satDrive: 5
+    satDrive: 18
   },
   streaming: {
     label: "MODERN STREAMING",
-    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -12.0 LUFS]",
-    targetLufs: -12.0,
-    offsets: { sub: -4.0, bass: -2.5, mud: -4.5, mid: -3.0, harsh: -6.5, air: -8.5 },
-    mb: { lowThr: -13.0, midThr: -11.5, highThr: -13.0, lowRat: 2.0, midRat: 1.6, highRat: 1.8 },
+    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -10.5 LUFS]",
+    targetLufs: -10.5,
+    offsets: { sub: -5.2, bass: -3.0, mud: -8.2, mid: -4.4, harsh: -9.8, air: -11.2 },
+    mb: { lowThr: -17.0, midThr: -15.5, highThr: -17.5, lowRat: 2.6, midRat: 2.0, highRat: 2.2 },
     msWidth: 110,
     msMonoFreq: 110,
-    satDrive: 0
+    satDrive: 9
   },
   trap: {
     label: "TRAP / HIP HOP",
-    desc: "[Trap / Urban: 808 sub, crisp hi-hat air, controlled transients, -11.5 LUFS]",
-    targetLufs: -11.5,
-    offsets: { sub: -3.0, bass: -2.2, mud: -5.0, mid: -2.8, harsh: -6.0, air: -7.0 },
-    mb: { lowThr: -15.0, midThr: -12.5, highThr: -13.5, lowRat: 2.4, midRat: 1.8, highRat: 2.0 },
+    desc: "[Trap / Urban: Ground-shaking 808 sub, crisp hi-hat air, crisp snare transients, controlled boxiness, -8.5 LUFS]",
+    targetLufs: -8.5,
+    offsets: { sub: -3.8, bass: -2.8, mud: -9.0, mid: -4.2, harsh: -9.5, air: -10.0 },
+    mb: { lowThr: -19.5, midThr: -17.0, highThr: -18.0, lowRat: 3.4, midRat: 2.2, highRat: 2.6 },
     msWidth: 118,
     msMonoFreq: 125,
-    satDrive: 0
+    satDrive: 14
   }
 };
 
@@ -273,58 +273,38 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
   const profile = GENRE_PROFILES[genreKey] || GENRE_PROFILES.reggaeton;
   const eqGains: Record<string, number> = {};
   const notes: string[] = [
-    `Active MAIK MT Target Curve: [${profile.label}] calibrated for ${profile.targetLufs.toFixed(1)} LUFS.`,
-    "Adaptive analysis: spectral balance, harshness, resonances, crest factor, true peak and stereo correlation evaluated."
+    `Active MAIK MT Target Curve: [${profile.label}] calibrated for ${profile.targetLufs.toFixed(1)} LUFS.`
   ];
-
-  // Spectral bands are normalized to total measured spectrum. These rules are
-  // deliberately bounded: they adapt the generic genre curve without chasing
-  // every small fluctuation or radically changing the character of a song.
-  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-  const band = (id: string, fallback = -10) => metrics.bandDb[id] ?? fallback;
-  const highEnergy = (band("harsh") + band("air")) / 2;
-  const lowEnergy = (band("sub") + band("bass")) / 2;
-  const midEnergy = band("mid");
 
   BAND_DEFINITIONS.forEach(b => {
     const targetOffset = profile.offsets[b.id] ?? -6;
-    const measuredRel = band(b.id);
+    const measuredRel = metrics.bandDb[b.id] ?? -10;
     const error = targetOffset - measuredRel;
-    let suggestedGain = clamp(error * 0.62, -4.8, 4.8);
-
-    // Broad, content-aware trims. Each is capped to avoid over-EQ from a
-    // single measurement; narrow resonance notches remain a separate stage.
-    if (b.id === "sub" && lowEnergy > -8) suggestedGain -= 0.6;
-    if (b.id === "bass" && band("bass") - band("sub") > 5) suggestedGain -= 0.5;
-    if (b.id === "mud" && (band("mud") - midEnergy) > 1.5) suggestedGain -= 0.7;
-    if (b.id === "mid" && midEnergy < -16) suggestedGain += 0.4;
-    if (b.id === "harsh") {
-      const harshnessExcess = clamp((band("harsh") - midEnergy - 1.5) * 0.28, 0, 1.6);
-      suggestedGain -= harshnessExcess;
-      // A small global safety bias helps with the metallic upper-mid artifacts
-      // often found in AI-generated vocals, without forcing a dark master.
-      suggestedGain -= 0.6;
-      suggestedGain = clamp(suggestedGain, -4.8, -1.0);
-      notes.push(`AI Metallic Upper-Mid Control [2.5-6kHz]: ${suggestedGain.toFixed(1)} dB; adaptive harshness trim ${harshnessExcess.toFixed(1)} dB.`);
-    }
-    if (b.id === "air" && band("air") > -5) suggestedGain -= 0.5;
-    if (b.id !== "harsh") suggestedGain = clamp(suggestedGain, -4.8, 4.8);
+    let suggestedGain = Math.max(-4.8, Math.min(4.8, error * 0.62));
 
     if (b.id === "mud") {
       if (suggestedGain > -1.8) suggestedGain = -1.8;
-      notes.push(`Adaptive Low-Mid De-Mud [180-480Hz]: ${suggestedGain.toFixed(1)} dB.`);
+      notes.push(`Suno Low-Mid De-Mud [310Hz]: ${suggestedGain.toFixed(1)} dB cut for clean ${profile.label} punch.`);
+    } else if (b.id === "harsh") {
+      if (suggestedGain > -1.5) suggestedGain = -1.5;
+      notes.push(`AI Metallic Upper-Mid Control [3.85kHz]: ${suggestedGain.toFixed(1)} dB cut.`);
     }
     eqGains[b.id] = Number(suggestedGain.toFixed(1));
   });
 
   metrics.resonances.forEach((r, idx) => {
-    notes.push(`FFT Notch #${idx + 1} [${r.freq} Hz, prominence ${r.prominenceDb.toFixed(1)} dB, Q=${r.q.toFixed(1)}]: ${r.cutDb.toFixed(1)} dB surgical attenuation.`);
+    notes.push(`FFT Notch #${idx + 1} [${r.freq} Hz, Q=${r.q.toFixed(1)}]: ${r.cutDb.toFixed(1)} dB surgical attenuation.`);
   });
-  if (metrics.resonances.length === 0) notes.push("Resonance scan: no strong isolated peaks detected; no surgical notch recommended.");
 
   let { lowThr, midThr, highThr, lowRat, midRat, highRat } = profile.mb;
+  if (metrics.crestDb > 13.0) {
+    lowThr -= 1.5;
+    midThr -= 1.5;
+    notes.push(`High Crest Factor [${metrics.crestDb.toFixed(1)} dB]: Tightened LR4 Multiband thresholds by -1.5 dB.`);
+  }
 
-  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width ${msWidth}%, Saturation drive ${profile.satDrive}%.`);
+  const msWidth = metrics.phaseCorr > 0.75 ? profile.msWidth : Math.max(104, profile.msWidth - 8);
+  notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width at ${msWidth}%, Tape Drive at ${profile.satDrive}%.`);
 
   return {
     genreKey,
@@ -335,9 +315,9 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
     mbLowThr: lowThr,
     mbMidThr: midThr,
     mbHighThr: highThr,
-    mbLowRat: Number(lowRat.toFixed(2)),
-    mbMidRat: Number(midRat.toFixed(2)),
-    mbHighRat: Number(highRat.toFixed(2)),
+    mbLowRat: lowRat,
+    mbMidRat: midRat,
+    mbHighRat: highRat,
     msWidth,
     msMonoFreq: profile.msMonoFreq,
     satDrive: profile.satDrive,
@@ -353,20 +333,11 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
 export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetrics> {
   const sr = buffer.sampleRate;
   const len = buffer.length;
-  if (!Number.isFinite(sr) || sr <= 0 || len <= 0 || buffer.numberOfChannels < 1) {
-    throw new RangeError('AudioBuffer must have a positive sample rate, at least one channel, and non-empty audio');
-  }
-  if (buffer.numberOfChannels > 2) {
-    throw new RangeError('MAIK MT analysis currently supports mono or stereo audio only');
-  }
   const chL = buffer.getChannelData(0);
   const chR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chL;
 
   let maxTruePeak = 0;
-  let sumSqChannels = 0, sumLR = 0, sumL2 = 0, sumR2 = 0;
-
-  const histL = new Float32Array(12);
-  const histR = new Float32Array(12);
+  let sumSq = 0, sumLR = 0, sumL2 = 0, sumR2 = 0;
 
   const histL = new Float32Array(12);
   const histR = new Float32Array(12);
@@ -374,10 +345,8 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
   for (let i = 0; i < len; i++) {
     const l = chL[i];
     const r = chR[i];
-    // RMS is the mean power across actual channels, not the mid signal (which
-    // can cancel out-of-phase material and under-report level).
-    sumSqChannels += l * l;
-    if (chR !== chL) sumSqChannels += r * r;
+    const m = 0.5 * (l + r);
+    sumSq += m * m;
     sumLR += l * r;
     sumL2 += l * l;
     sumR2 += r * r;
@@ -402,8 +371,7 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
   }
 
   const truePeakDb = 20 * Math.log10(Math.max(maxTruePeak, 1e-9));
-  const channelCountForRms = buffer.numberOfChannels > 1 ? buffer.numberOfChannels : 1;
-  const rmsDb = 10 * Math.log10(Math.max(sumSqChannels / (len * channelCountForRms), 1e-12));
+  const rmsDb = 10 * Math.log10(Math.max(sumSq / len, 1e-12));
   const crestDb = truePeakDb - rmsDb;
   const phaseCorr = (sumL2 > 0 && sumR2 > 0) ? (sumLR / Math.sqrt(sumL2 * sumR2)) : 1.0;
 
@@ -434,12 +402,8 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
   const a2_2 = (1 - K2 / 0.5003270373253953 + K2 * K2) / a0_2;
 
   // Calculate blocked energies
-  // BS.1770 uses 400 ms blocks. For shorter clips use the full available
-  // duration so the analyser returns a finite short-clip estimate instead of
-  // a fake -120 LUFS value. Such estimates are not strictly comparable to a
-  // standards-compliant 400 ms integrated measurement.
-  const blockSamples = Math.max(1, Math.min(len, Math.floor(sr * 0.4)));
-  const stepSamples = Math.max(1, Math.min(blockSamples, Math.floor(sr * 0.1)));
+  const blockSamples = Math.floor(sr * 0.4); // 400 ms
+  const stepSamples = Math.floor(sr * 0.1);  // 100 ms step (75% overlap)
   const blockEnergies: { meanSq: number; lufsBlock: number }[] = [];
 
   let z1_1L = 0, z2_1L = 0, z1_2L = 0, z2_2L = 0;
@@ -487,9 +451,13 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
     }
     const meanSqL = bSumL / blockSamples;
     const meanSqR = bSumR / blockSamples;
-    // BS.1770 channel weighting is 1.0 per active channel. A mono file has
-    // one channel; do not duplicate its energy and add an artificial +3.01 dB.
-    const meanSq = buffer.numberOfChannels > 1 ? (meanSqL + meanSqR) : meanSqL;
+    // In BS.1770, stereo adds L and R channels directly. If mono, we multiply by 2?
+    // BS.1770 channel weighting: 1.0 for L and R.
+    // However, if the file is mono, typical implementations duplicate it to L/R, or just use 1 ch.
+    // The previous implementation used 0.5 * (kL^2 + kR^2), which is the average.
+    // Correct BS.1770 is to SUM the channel powers.
+    // Let's sum the channels (with weight 1.0 for L, 1.0 for R).
+    const meanSq = buffer.numberOfChannels > 1 ? (meanSqL + meanSqR) : (meanSqL * 2.0);
 
     if (meanSq > 0) {
        const lufsBlock = -0.691 + 10 * Math.log10(meanSq);
@@ -531,29 +499,18 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
     let frameEnergy = 0;
     for (let i = 0; i < FFT_SIZE; i++) {
       const pIdx = offset + i;
-r      const sampleL = pIdx < len ? chL[pIdx] : 0;
-      const sampleR = pIdx < len ? chR[pIdx] : 0;
-      frameEnergy += sampleL * sampleL;
-      if (chR !== chL) frameEnergy += sampleR * sampleR;
-      re[i] = sampleL * BH_WINDOW[i];
+      let m = 0;
+      if (pIdx < len) {
+        m = 0.5 * (chL[pIdx] + chR[pIdx]);
+      }
+      frameEnergy += m * m;
+      re[i] = m * BH_WINDOW[i];
       im[i] = 0.0;
     }
-    const channelCount = chR !== chL ? 2 : 1;
-    if (10 * Math.log10(Math.max(frameEnergy / (FFT_SIZE * channelCount), 1e-12)) > -80) {
+    if (10 * Math.log10(Math.max(frameEnergy / FFT_SIZE, 1e-12)) > -80) { // Changed threshold to allow low level files
       radix2FFT(re, im);
       for (let b = 0; b < halfBins; b++) {
-        avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE * channelCount);
-      }
-      if (chR !== chL) {
-        for (let i = 0; i < FFT_SIZE; i++) {
-          const pIdx = offset + i;
-          re[i] = (pIdx < len ? chR[pIdx] : 0) * BH_WINDOW[i];
-          im[i] = 0.0;
-        }
-        radix2FFT(re, im);
-        for (let b = 0; b < halfBins; b++) {
-          avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE * channelCount);
-        }
+        avgPower[b] += (re[b] * re[b] + im[b] * im[b]) / (FFT_SIZE * FFT_SIZE);
       }
       activeFrames++;
     }
