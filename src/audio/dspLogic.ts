@@ -66,50 +66,50 @@ export interface GenreProfile {
 export const GENRE_PROFILES: Record<string, GenreProfile> = {
   reggaeton: {
     label: "REGGAETON / DEMBOW",
-    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, strong 310Hz mud cut, upfront vocals, -12 LUFS]",
+    desc: "[Reggaeton / Dembow: Deep sub weight, punchy 100Hz kick/bass, clean mids, upfront vocals, -12.0 LUFS]",
     targetLufs: -12.0,
-    offsets: { sub: -4.4, bass: -2.5, mud: -8.8, mid: -3.9, harsh: -9.8, air: -10.8 },
-    mb: { lowThr: -18.5, midThr: -16.5, highThr: -18.5, lowRat: 2.0, midRat: 1.6, highRat: 1.5 },
+    offsets: { sub: -3.5, bass: -2.0, mud: -5.0, mid: -2.5, harsh: -6.0, air: -8.0 },
+    mb: { lowThr: -14.0, midThr: -12.0, highThr: -14.0, lowRat: 2.2, midRat: 1.8, highRat: 1.8 },
     msWidth: 114,
     msMonoFreq: 120,
     satDrive: 0
   },
   techhouse: {
     label: "TECH HOUSE / CLUB",
-    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, scooped boxiness, crisp hats, -11.5 LUFS]",
+    desc: "[Tech House / Bumping: Tight mono sub below 130Hz, driving low-end groove, clean mix, -11.5 LUFS]",
     targetLufs: -11.5,
-    offsets: { sub: -4.2, bass: -2.3, mud: -9.2, mid: -4.9, harsh: -9.6, air: -10.2 },
-    mb: { lowThr: -19.0, midThr: -17.0, highThr: -18.0, lowRat: 2.2, midRat: 1.7, highRat: 1.6 },
+    offsets: { sub: -3.5, bass: -2.0, mud: -5.5, mid: -3.0, harsh: -6.0, air: -7.5 },
+    mb: { lowThr: -14.5, midThr: -12.5, highThr: -13.5, lowRat: 2.5, midRat: 1.8, highRat: 2.0 },
     msWidth: 120,
     msMonoFreq: 130,
     satDrive: 0
   },
   hardstyle: {
     label: "HARDSTYLE / FESTIVAL",
-    desc: "[Hardstyle / Harder Styles: Massive sub & reverse-bass density, tamed 3.8kHz screech harshness, wide stereo leads, -10.5 LUFS]",
+    desc: "[Hardstyle / Harder Styles: Sub & reverse-bass density, wide stereo leads, -10.5 LUFS]",
     targetLufs: -10.5,
-    offsets: { sub: -4.5, bass: -2.0, mud: -8.7, mid: -4.1, harsh: -9.4, air: -10.0 },
-    mb: { lowThr: -20.0, midThr: -18.0, highThr: -19.0, lowRat: 2.5, midRat: 1.8, highRat: 1.8 },
+    offsets: { sub: -3.8, bass: -1.8, mud: -5.0, mid: -2.8, harsh: -6.0, air: -7.0 },
+    mb: { lowThr: -15.5, midThr: -13.5, highThr: -14.5, lowRat: 2.8, midRat: 2.0, highRat: 2.2 },
     msWidth: 126,
     msMonoFreq: 110,
-    satDrive: 1
+    satDrive: 5
   },
   streaming: {
     label: "MODERN STREAMING",
-    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -12 LUFS]",
+    desc: "[Modern Streaming: Balanced reference curve with preserved crest factor and dynamic punch, -12.0 LUFS]",
     targetLufs: -12.0,
-    offsets: { sub: -5.2, bass: -3.0, mud: -8.2, mid: -4.4, harsh: -9.8, air: -11.2 },
-    mb: { lowThr: -17.0, midThr: -15.5, highThr: -17.5, lowRat: 1.8, midRat: 1.5, highRat: 1.4 },
+    offsets: { sub: -4.0, bass: -2.5, mud: -4.5, mid: -3.0, harsh: -6.5, air: -8.5 },
+    mb: { lowThr: -13.0, midThr: -11.5, highThr: -13.0, lowRat: 2.0, midRat: 1.6, highRat: 1.8 },
     msWidth: 110,
     msMonoFreq: 110,
     satDrive: 0
   },
   trap: {
     label: "TRAP / HIP HOP",
-    desc: "[Trap / Urban: Ground-shaking 808 sub, crisp hi-hat air, crisp snare transients, controlled boxiness, -11.5 LUFS]",
+    desc: "[Trap / Urban: 808 sub, crisp hi-hat air, controlled transients, -11.5 LUFS]",
     targetLufs: -11.5,
-    offsets: { sub: -3.8, bass: -2.8, mud: -9.0, mid: -4.2, harsh: -9.5, air: -10.0 },
-    mb: { lowThr: -19.5, midThr: -17.0, highThr: -18.0, lowRat: 2.1, midRat: 1.7, highRat: 1.6 },
+    offsets: { sub: -3.0, bass: -2.2, mud: -5.0, mid: -2.8, harsh: -6.0, air: -7.0 },
+    mb: { lowThr: -15.0, midThr: -12.5, highThr: -13.5, lowRat: 2.4, midRat: 1.8, highRat: 2.0 },
     msWidth: 118,
     msMonoFreq: 125,
     satDrive: 0
@@ -324,38 +324,6 @@ export function computeSunoPrescription(metrics: AudioMetrics, genreKey: string)
   if (metrics.resonances.length === 0) notes.push("Resonance scan: no strong isolated peaks detected; no surgical notch recommended.");
 
   let { lowThr, midThr, highThr, lowRat, midRat, highRat } = profile.mb;
-  // Crest factor is a proxy, not a complete transient detector. Use gentle
-  // bounded adjustments only, and leave the profile's attack/release untouched.
-  if (metrics.crestDb > 14) {
-    lowRat = clamp(lowRat - 0.15, 1.2, 4);
-    midRat = clamp(midRat - 0.15, 1.2, 4);
-    highRat = clamp(highRat - 0.1, 1.2, 4);
-    notes.push(`Dynamics: high crest factor (${metrics.crestDb.toFixed(1)} dB); compression ratios eased to preserve transients.`);
-  } else if (metrics.crestDb < 7) {
-    lowRat = clamp(lowRat + 0.15, 1.2, 4);
-    midRat = clamp(midRat + 0.15, 1.2, 4);
-    highRat = clamp(highRat + 0.1, 1.2, 4);
-    notes.push(`Dynamics: low crest factor (${metrics.crestDb.toFixed(1)} dB); only a mild density increase is suggested.`);
-  } else {
-    notes.push(`Dynamics: crest factor ${metrics.crestDb.toFixed(1)} dB; profile compression retained.`);
-  }
-
-  const msWidth = metrics.phaseCorr < 0 ? Math.max(100, profile.msWidth - 14)
-    : metrics.phaseCorr > 0.75 ? profile.msWidth
-    : Math.max(104, profile.msWidth - 8);
-  if (metrics.phaseCorr < 0) {
-    notes.push(`Stereo warning: negative L/R correlation (${metrics.phaseCorr.toFixed(2)}); width reduced conservatively to limit mono-compatibility risk.`);
-  } else {
-    notes.push(`Stereo analysis: correlation ${metrics.phaseCorr.toFixed(2)}; width set to ${msWidth}%.`);
-  }
-  if (metrics.truePeakDb > -1) {
-    notes.push(`Peak safety: source true peak is ${metrics.truePeakDb.toFixed(2)} dBTP; limiter ceiling remains -1.0 dBFS/dBTP target.`);
-  }
-  if (metrics.integratedLufs > profile.targetLufs + 2) {
-    notes.push(`Loudness: source is ${metrics.integratedLufs.toFixed(1)} LUFS, quieter than target by ${(metrics.integratedLufs - profile.targetLufs).toFixed(1)} LU; gain staging/limiter will need to supply the difference.`);
-  } else if (metrics.integratedLufs < profile.targetLufs - 2) {
-    notes.push(`Loudness: source is ${metrics.integratedLufs.toFixed(1)} LUFS, already louder than target by ${(profile.targetLufs - metrics.integratedLufs).toFixed(1)} LU; avoid unnecessary additional limiting.`);
-  }
 
   notes.push(`M/S Matrix: Sub-bass mono below ${profile.msMonoFreq} Hz, Stereo Width ${msWidth}%, Saturation drive ${profile.satDrive}%.`);
 

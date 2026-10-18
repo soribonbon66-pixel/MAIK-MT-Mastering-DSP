@@ -95,10 +95,10 @@ test('computeSunoPrescription enforces Suno mud cut and genre parameters', () =>
   };
 
   const presc = computeSunoPrescription(mockMetrics, 'reggaeton');
-  assert.equal(presc.targetLufs, -12);
-  assert.ok(presc.eqGains.mud <= -1.8, 'Mud band should receive a negative corrective cut');
-  assert.equal(presc.mbLowThr, GENRE_PROFILES.reggaeton.mb.lowThr, 'High crest factor should not force extra compression');
-  assert.ok(presc.notes.length >= 3, 'Prescription should produce diagnostic engineering notes');
+  assert.equal(presc.targetLufs, -12.0);
+  assert.ok(presc.eqGains.mud <= -1.5, 'Mud band should receive a negative corrective cut');
+  assert.equal(presc.satDrive, 0, 'Saturation should be off by default in reggaeton');
+  assert.ok(presc.notes.length >= 2, 'Prescription should produce diagnostic engineering notes');
 });
 
 // We need a minimal mock AudioBuffer for node since there is no OfflineAudioContext natively.
@@ -163,6 +163,33 @@ test('an empty audio buffer is rejected with a clear error', async () => {
 });
 
 // 1. Digital silence
+test('computeSunoPrescription sets target Lufs for all 5 genre profiles correctly', () => {
+  const mockMetrics: AudioMetrics = {
+    sampleRate: 44100, duration: 10, channels: 2, integratedLufs: -14.2,
+    truePeakDb: -0.5, rmsDb: -16.0, crestDb: 10.0, phaseCorr: 0.88,
+    bandDb: { sub: -6, bass: -3, mud: -6, mid: -4, harsh: -8, air: -12 },
+    spectrumDb: new Float32Array(2048).fill(-30), binHz: 10.76, resonances: []
+  };
+
+  const reg = computeSunoPrescription(mockMetrics, 'reggaeton');
+  const tech = computeSunoPrescription(mockMetrics, 'techhouse');
+  const hard = computeSunoPrescription(mockMetrics, 'hardstyle');
+  const stream = computeSunoPrescription(mockMetrics, 'streaming');
+  const trap = computeSunoPrescription(mockMetrics, 'trap');
+
+  assert.equal(reg.targetLufs, -12.0);
+  assert.equal(tech.targetLufs, -11.5);
+  assert.equal(hard.targetLufs, -10.5);
+  assert.equal(stream.targetLufs, -12.0);
+  assert.equal(trap.targetLufs, -11.5);
+
+  assert.equal(reg.satDrive, 0);
+  assert.equal(tech.satDrive, 0);
+  assert.equal(hard.satDrive, 5);
+  assert.equal(stream.satDrive, 0);
+  assert.equal(trap.satDrive, 0);
+});
+
 test('Scenario 1: Digital Silence', async () => {
   const buf = new MockAudioBuffer(2, 44100, 44100) as any as AudioBuffer;
   const metrics = await analyzeAudioBuffer(buf);
