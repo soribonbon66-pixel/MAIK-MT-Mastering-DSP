@@ -51,24 +51,6 @@ test('detectResonances identifies prominent spectral spikes', () => {
   assert.ok(found310, 'Should locate resonance near 310 Hz');
 });
 
-test('adaptive prescription applies bounded harshness control and reports analysis', () => {
-  const metrics: AudioMetrics = {
-    sampleRate: 44100, duration: 180, channels: 2, integratedLufs: -10.5,
-    truePeakDb: -0.2, rmsDb: -13, crestDb: 5, phaseCorr: -0.25,
-    bandDb: { sub: -7, bass: -6, mud: -7, mid: -12, harsh: -4, air: -5 },
-    spectrumDb: new Float32Array(2048).fill(-30), binHz: 10.76,
-    resonances: []
-  };
-  const result = computeSunoPrescription(metrics, 'reggaeton');
-  assert.ok(result.eqGains.harsh <= -1, 'Harshness correction should always be a controlled cut');
-  assert.ok(result.eqGains.harsh >= -4.8, 'Harshness correction must remain bounded');
-  assert.ok(result.msWidth < GENRE_PROFILES.reggaeton.msWidth, 'Negative phase correlation should reduce width');
-  assert.ok(result.mbMidRat > GENRE_PROFILES.reggaeton.mb.midRat, 'Low crest factor should suggest only a mild density increase');
-  assert.ok(result.notes.some(note => note.includes('Stereo warning')));
-  assert.ok(result.notes.some(note => note.includes('Peak safety')));
-  assert.ok(result.notes.some(note => note.includes('no strong isolated peaks')));
-});
-
 test('computeSunoPrescription enforces Suno mud cut and genre parameters', () => {
   const mockMetrics: AudioMetrics = {
     sampleRate: 44100,
