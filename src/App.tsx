@@ -646,8 +646,8 @@ export default function App() {
           let l = mid + side;
           let r = mid - side;
 
-          L[i] = driveK > 0 ? saturate(l) : l;
-          R[i] = driveK > 0 ? saturate(r) : r;
+          L[i] = saturate(l);
+          R[i] = saturate(r);
         }
       } else {
         const M = stageBuffer.getChannelData(0);

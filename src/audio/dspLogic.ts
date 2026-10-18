@@ -200,19 +200,18 @@ export const POLYPHASE_4X_TAPS = [
 
 /**
  * Calculates max True Peak over a 12-sample history using 4x Polyphase Oversampling
- * @param hist Circular buffer of 12 samples (idx 0 is newest, idx 11 is oldest)
+ * @param hist Circular buffer of 12 samples (idx 0 is oldest, idx 11 is newest)
  */
 export function evalTruePeakPolyphase4x(hist: Float32Array): number {
-  // The processing pipeline stores newest samples at index 0, while FIR taps
-  // are defined in chronological (oldest-to-newest) order. Reverse the history
-  // when applying the taps; otherwise asymmetric phases are time-reversed.
-  if (hist.length !== 12) throw new RangeError('True-peak history must contain 12 samples');
   let maxAbs = 0;
   for (let p = 0; p < 4; p++) {
     const phaseTaps = POLYPHASE_4X_TAPS[p];
     let val = 0;
-    for (let i = 0; i < 12; i++) val += hist[11 - i] * phaseTaps[i];
-    maxAbs = Math.max(maxAbs, Math.abs(val));
+    for (let i = 0; i < 12; i++) {
+      val += hist[i] * phaseTaps[i];
+    }
+    const absVal = Math.abs(val);
+    if (absVal > maxAbs) maxAbs = absVal;
   }
   return maxAbs;
 }
@@ -365,6 +364,9 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
 
   let maxTruePeak = 0;
   let sumSqChannels = 0, sumLR = 0, sumL2 = 0, sumR2 = 0;
+
+  const histL = new Float32Array(12);
+  const histR = new Float32Array(12);
 
   const histL = new Float32Array(12);
   const histR = new Float32Array(12);
@@ -529,7 +531,7 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioMetr
     let frameEnergy = 0;
     for (let i = 0; i < FFT_SIZE; i++) {
       const pIdx = offset + i;
-      const sampleL = pIdx < len ? chL[pIdx] : 0;
+r      const sampleL = pIdx < len ? chL[pIdx] : 0;
       const sampleR = pIdx < len ? chR[pIdx] : 0;
       frameEnergy += sampleL * sampleL;
       if (chR !== chL) frameEnergy += sampleR * sampleR;
